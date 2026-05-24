@@ -19,10 +19,13 @@ struct State {
 impl State {
     async fn new(window: Window) -> Self {
         let size = window.inner_size();
+        println!("[winit][窗口]大小:{}x{}", size.width, size.height);
         let window = Arc::new(window);
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
+            // backends: wgpu::Backends::all(),
+            // 优先使用vulkan
+            backends: wgpu::Backends::VULKAN,
             ..Default::default()
         });
 
@@ -38,6 +41,15 @@ impl State {
             })
             .await
             .expect("找不到合适的 GPU 适配器");
+
+        let adapter_info = adapter.get_info();
+        println!(
+            "[GPU] 名称: {}, 厂商: {}, 设备: {:?}, 后端: {:?}",
+            adapter_info.name,
+            adapter_info.vendor,
+            adapter_info.device_type,
+            adapter_info.backend
+        );
 
         let (device, queue) = adapter
             .request_device(
@@ -58,6 +70,11 @@ impl State {
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
+
+        println!(
+            "[Surface] 选用格式: {:?}, 显示模式: {:?}",
+            surface_format, surface_caps.present_modes[0]
+        );
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -83,6 +100,7 @@ impl State {
 
     fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
+            println!("[窗口] 尺寸改变: {}x{} -> {}x{}", self.size.width, self.size.height, new_size.width, new_size.height);
             self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
@@ -158,7 +176,10 @@ impl ApplicationHandler for App {
         };
 
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                println!("[Event] 关闭窗口");
+                event_loop.exit();
+            }
             WindowEvent::Resized(new_size) => {
                 state.resize(new_size);
                 state.window.request_redraw();
@@ -168,6 +189,7 @@ impl ApplicationHandler for App {
                     Ok(()) => {}
                     Err(wgpu::SurfaceError::Lost) => {
                         // Surface 彻底丢失，退出
+                        eprintln!("[渲染错误] Surface 丢失，应用退出");
                         event_loop.exit();
                         return;
                     }
@@ -183,7 +205,7 @@ impl ApplicationHandler for App {
                         return;
                     }
                 }
-                state.window.request_redraw();
+                // state.window.request_redraw();
             }
             _ => {}
         }
@@ -192,6 +214,7 @@ impl ApplicationHandler for App {
 
 fn main() {
     let event_loop = EventLoop::new().expect("创建 EventLoop 失败");
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
     let mut app = App { state: None };
     event_loop.run_app(&mut app).expect("EventLoop 运行失败");
 }
