@@ -1,11 +1,18 @@
+mod render;
+mod ui;
+
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::WindowEvent,
+    event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     window::{Window, WindowId},
 };
+
+use render::Renderer2D;
+use ui::button::Button;
+use ui::UiRoot;
 
 struct State {
     surface: wgpu::Surface<'static>,
@@ -14,6 +21,11 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     size: PhysicalSize<u32>,
     window: Arc<Window>,
+
+    renderer: Renderer2D,
+    ui: UiRoot,
+    /// 最近一次鼠标位置（物理像素）。
+    mouse_pos: (f32, f32),
 }
 
 impl State {
@@ -23,8 +35,6 @@ impl State {
         let window = Arc::new(window);
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            // backends: wgpu::Backends::all(),
-            // 优先使用vulkan
             backends: wgpu::Backends::VULKAN,
             ..Default::default()
         });
@@ -88,6 +98,23 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        // --- 创建 2D 渲染器 ---
+        let renderer = Renderer2D::new(&device, surface_format, size.width, size.height);
+
+        // --- 创建 UI 并添加一个按钮 ---
+        let mut ui = UiRoot::new();
+        ui.add(Button::new(
+            300.0,
+            250.0,
+            200.0,
+            60.0,
+            "Click me!",
+            || {
+                println!("[UI] 按钮被点击！");
+                true
+            },
+        ));
+
         Self {
             surface,
             device,
@@ -95,12 +122,21 @@ impl State {
             config,
             size,
             window,
+            renderer,
+            ui,
+            mouse_pos: (0.0, 0.0),
         }
     }
 
     fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
-            println!("[窗口] 尺寸改变: {}x{} -> {}x{}", self.size.width, self.size.height, new_size.width, new_size.height);
+            println!(
+                "[窗口] 尺寸改变: {}x{} -> {}x{}",
+                self.size.width,
+                self.size.height,
+                new_size.width,
+                new_size.height
+            );
             self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
@@ -116,8 +152,10 @@ impl State {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        // 清屏
         {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let _clear = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
@@ -137,6 +175,30 @@ impl State {
                 occlusion_query_set: None,
             });
         }
+
+        // 收集 UI 绘制命令并渲染
+        self.renderer
+            .begin_frame(self.size.width, self.size.height);
+        self.ui.draw(&mut self.renderer);
+
+        {
+            let mut ui_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("xelgui-ui-pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            self.renderer.end_frame(&mut ui_pass, &self.queue);
+        }
+
         self.queue.submit([encoder.finish()]);
         frame.present();
         Ok(())
@@ -188,24 +250,45 @@ impl ApplicationHandler for App {
                 match state.render() {
                     Ok(()) => {}
                     Err(wgpu::SurfaceError::Lost) => {
-                        // Surface 彻底丢失，退出
                         eprintln!("[渲染错误] Surface 丢失，应用退出");
                         event_loop.exit();
                         return;
                     }
-                    Err(wgpu::SurfaceError::Outdated) => {
-                        // Surface 过期，会在下次 resize 或 resumed 中重建
-                    }
-                    Err(wgpu::SurfaceError::Timeout) => {
-                        // GPU 忙，跳过这帧但继续请求重绘
-                    }
+                    Err(wgpu::SurfaceError::Outdated) => {}
+                    Err(wgpu::SurfaceError::Timeout) => {}
                     Err(wgpu::SurfaceError::OutOfMemory) => {
                         eprintln!("GPU 内存不足");
                         event_loop.exit();
                         return;
                     }
                 }
-                // state.window.request_redraw();
+            }
+
+            // --- 鼠标事件 → UI ---
+            WindowEvent::CursorMoved { position, .. } => {
+                let px = position.x as f32;
+                let py = position.y as f32;
+                state.mouse_pos = (px, py);
+                state.ui.handle_mouse_move(px, py);
+                state.window.request_redraw();
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
+                let (px, py) = state.mouse_pos;
+                state.ui.handle_mouse_down(px, py);
+                state.window.request_redraw();
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                ..
+            } => {
+                let (px, py) = state.mouse_pos;
+                state.ui.handle_mouse_up(px, py);
+                state.window.request_redraw();
             }
             _ => {}
         }

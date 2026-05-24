@@ -1,0 +1,290 @@
+use std::mem;
+use wgpu::util::DeviceExt;
+
+// ---------------------------------------------------------------------------
+// 顶点格式：2D 位置 + RGBA 颜色
+// ---------------------------------------------------------------------------
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct Vertex2D {
+    pub position: [f32; 2],
+    pub color: [f32; 4],
+}
+
+impl Vertex2D {
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x4];
+
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 投影矩阵 uniform
+// ---------------------------------------------------------------------------
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Uniforms {
+    projection: [[f32; 4]; 4],
+}
+
+// ---------------------------------------------------------------------------
+// WGSL 着色器
+// ---------------------------------------------------------------------------
+const SHADER_SRC: &str = r#"
+struct VertexInput {
+    @location(0) position: vec2<f32>,
+    @location(1) color:    vec4<f32>,
+};
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0)   color:         vec4<f32>,
+};
+
+struct Uniforms {
+    projection: mat4x4<f32>,
+};
+
+@group(0) @binding(0)
+var<uniform> uniforms: Uniforms;
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    out.clip_position = uniforms.projection * vec4<f32>(in.position, 0.0, 1.0);
+    out.color = in.color;
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return in.color;
+}
+"#;
+
+// 批次最大容量
+const MAX_VERTICES: u64 = 16384;
+const MAX_INDICES: u64 = 24576;
+
+// ---------------------------------------------------------------------------
+// Renderer2D — 批处理 2D 渲染器
+// ---------------------------------------------------------------------------
+pub(crate) struct Renderer2D {
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+    uniform_buffer: wgpu::Buffer,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+
+    // CPU 端批次缓冲区
+    vertices: Vec<Vertex2D>,
+    indices: Vec<u32>,
+
+    // 当前帧的屏幕尺寸
+    screen_width: f32,
+    screen_height: f32,
+}
+
+impl Renderer2D {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        screen_width: u32,
+        screen_height: u32,
+    ) -> Self {
+        // --- 着色器 ---
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("xelgui-2d-shader"),
+            source: wgpu::ShaderSource::Wgsl(SHADER_SRC.into()),
+        });
+
+        // --- Bind group layout ---
+        let bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("xelgui-uniform-bgl"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("xelgui-pipeline-layout"),
+                bind_group_layouts: &[&bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+        // --- 渲染管线 ---
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("xelgui-2d-pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex2D::desc()],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        });
+
+        // --- Uniform buffer ---
+        let uniforms = Self::build_projection(screen_width, screen_height);
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("xelgui-uniform"),
+            contents: bytemuck::cast_slice(&[uniforms]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("xelgui-uniform-bg"),
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
+        // --- 预分配顶点 & 索引 GPU buffer ---
+        let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("xelgui-vbuf"),
+            size: MAX_VERTICES * mem::size_of::<Vertex2D>() as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("xelgui-ibuf"),
+            size: MAX_INDICES * mem::size_of::<u32>() as u64,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        Self {
+            pipeline,
+            bind_group,
+            uniform_buffer,
+            vertex_buffer,
+            index_buffer,
+            vertices: Vec::with_capacity(1024),
+            indices: Vec::with_capacity(1536),
+            screen_width: screen_width as f32,
+            screen_height: screen_height as f32,
+        }
+    }
+
+    /// 每帧开始时调用，清空批次。
+    pub fn begin_frame(&mut self, screen_width: u32, screen_height: u32) {
+        self.screen_width = screen_width as f32;
+        self.screen_height = screen_height as f32;
+        self.vertices.clear();
+        self.indices.clear();
+    }
+
+    /// 向批次中添加一个实心矩形。坐标原点为窗口左上角，Y 轴向下。
+    pub fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
+        let base = self.vertices.len() as u32;
+
+        self.vertices.push(Vertex2D {
+            position: [x, y],
+            color,
+        });
+        self.vertices.push(Vertex2D {
+            position: [x + w, y],
+            color,
+        });
+        self.vertices.push(Vertex2D {
+            position: [x + w, y + h],
+            color,
+        });
+        self.vertices.push(Vertex2D {
+            position: [x, y + h],
+            color,
+        });
+
+        self.indices
+            .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+
+    /// 结束批次，上传数据到 GPU 并发出绘制命令。
+    pub fn end_frame<'a>(
+        &'a self,
+        render_pass: &mut wgpu::RenderPass<'a>,
+        queue: &wgpu::Queue,
+    ) {
+        if self.vertices.is_empty() {
+            return;
+        }
+
+        // 更新投影矩阵
+        let uniforms = Self::build_projection(
+            self.screen_width as u32,
+            self.screen_height as u32,
+        );
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+
+        // 上传顶点数据
+        let vdata = bytemuck::cast_slice(&self.vertices);
+        let vlen = vdata.len() as u64;
+        let vcap = self.vertex_buffer.size();
+        if vlen <= vcap {
+            queue.write_buffer(&self.vertex_buffer, 0, vdata);
+        } else {
+            queue.write_buffer(&self.vertex_buffer, 0, &vdata[..vcap as usize]);
+        }
+
+        // 上传索引数据
+        let idata = bytemuck::cast_slice(&self.indices);
+        let ilen = idata.len() as u64;
+        let icap = self.index_buffer.size();
+        if ilen <= icap {
+            queue.write_buffer(&self.index_buffer, 0, idata);
+        } else {
+            queue.write_buffer(&self.index_buffer, 0, &idata[..icap as usize]);
+        }
+
+        let index_count = self.indices.len().min(MAX_INDICES as usize) as u32;
+
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        render_pass.draw_indexed(0..index_count, 0, 0..1);
+    }
+
+    fn build_projection(w: u32, h: u32) -> Uniforms {
+        // 正交投影：左上角 (0,0)，Y 轴向下
+        let proj = glam::Mat4::orthographic_rh_gl(0.0, w as f32, h as f32, 0.0, -1.0, 1.0);
+        Uniforms {
+            projection: proj.to_cols_array_2d(),
+        }
+    }
+}

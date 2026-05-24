@@ -7,3 +7,5 @@ edition = "2024"
 winit = { version = "0.30.13", features = ["wayland"] }
 wgpu = "0.20"
 pollster = "0.4"
+glam = { version = "0.28", features = ["bytemuck"] }
+bytemuck = { version = "1", features = ["derive"] }
