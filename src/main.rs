@@ -15,6 +15,7 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: PhysicalSize<u32>,
+    #[allow(dead_code)]
     window: Arc<Window>,
 
     renderer: Renderer2D,
@@ -137,19 +138,30 @@ impl State {
     }
 
     fn render(&mut self) {
+        self.window.pre_present_notify();
+
         let frame = match self.surface.get_current_texture() {
             Ok(f) => f,
             Err(wgpu::SurfaceError::Lost) => {
-                eprintln!("[渲染错误] Surface 丢失");
+                eprintln!("[Render] Surface 丢失");
                 return;
             }
             Err(wgpu::SurfaceError::Outdated) => {
-                // Surface 过期，等 resize 重建
+                self.surface.configure(&self.device, &self.config);
+                match self.surface.get_current_texture() {
+                    Ok(f) => f,
+                    Err(e) => {
+                        eprintln!("[Render] Surface 重建后仍失败: {e:?}");
+                        return;
+                    }
+                }
+            }
+            Err(wgpu::SurfaceError::Timeout) => {
+                eprintln!("[Render] Timeout");
                 return;
             }
-            Err(wgpu::SurfaceError::Timeout) => return,
             Err(wgpu::SurfaceError::OutOfMemory) => {
-                eprintln!("GPU 内存不足");
+                eprintln!("[Render] GPU 内存不足");
                 return;
             }
         };
@@ -210,8 +222,9 @@ impl ApplicationHandler for App {
                 .expect("创建窗口失败");
 
             let state = pollster::block_on(State::new(window));
-            state.window.request_redraw();
             self.state = Some(state);
+            // 请求初始帧
+            self.state.as_ref().unwrap().window.request_redraw();
         }
     }
 
@@ -239,7 +252,6 @@ impl ApplicationHandler for App {
                 state.render();
             }
 
-            // --- 鼠标事件 → UI ---
             WindowEvent::CursorMoved { position, .. } => {
                 let px = position.x as f32;
                 let py = position.y as f32;
@@ -272,7 +284,8 @@ impl ApplicationHandler for App {
 
 fn main() {
     let event_loop = EventLoop::new().expect("创建 EventLoop 失败");
-    event_loop.set_control_flow(ControlFlow::Wait);
+    // Poll 确保 Wayland 下 request_redraw 能被及时处理
+    event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App { state: None };
     event_loop.run_app(&mut app).expect("EventLoop 运行失败");
 }

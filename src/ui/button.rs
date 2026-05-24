@@ -64,17 +64,14 @@ impl Widget for Button {
     }
 
     fn on_mouse_down(&mut self, _px: f32, _py: f32) -> bool {
-        eprintln!("[Button] mouse_down → Pressed");
         self.state = ButtonState::Pressed;
         true
     }
 
     fn on_mouse_up(&mut self, px: f32, py: f32) -> bool {
-        eprintln!("[Button] mouse_up");
         if self.state == ButtonState::Pressed {
             self.state = ButtonState::Hovered;
             if self.bounds.contains(px, py) {
-                eprintln!("[Button] click fired");
                 return (self.on_click)();
             }
         }
@@ -83,12 +80,10 @@ impl Widget for Button {
     }
 
     fn on_mouse_enter(&mut self) {
-        eprintln!("[Button] enter → Hovered");
         self.state = ButtonState::Hovered;
     }
 
     fn on_mouse_leave(&mut self) {
-        eprintln!("[Button] leave → Normal");
         self.state = ButtonState::Normal;
     }
 }

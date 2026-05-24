@@ -241,18 +241,8 @@ impl Renderer2D {
 
     pub fn upload(&mut self, queue: &wgpu::Queue) {
         if self.vertices.is_empty() {
-            eprintln!("[Renderer] upload: 0 vertices, skipped");
             return;
         }
-
-        // 打印第一个顶点的颜色（用于诊断）
-        let c0 = self.vertices[0].color;
-        eprintln!(
-            "[Renderer] upload: {} verts, {} indices, v0.color=[{:.2},{:.2},{:.2},{:.2}]",
-            self.vertices.len(),
-            self.indices.len(),
-            c0[0], c0[1], c0[2], c0[3]
-        );
 
         let uniforms = Self::build_projection(
             self.screen_width as u32,
@@ -273,10 +263,8 @@ impl Renderer2D {
 
     pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         if self.uploaded_index_count == 0 {
-            eprintln!("[Renderer] draw: 0 indices, skipped");
             return;
         }
-        eprintln!("[Renderer] draw: {} indices", self.uploaded_index_count);
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
