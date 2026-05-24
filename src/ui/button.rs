@@ -2,7 +2,6 @@ use crate::render::Renderer2D;
 use crate::ui::color::Color;
 use crate::ui::widget::{Rect, Widget};
 
-/// 按钮状态
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum ButtonState {
     Normal,
@@ -10,12 +9,11 @@ enum ButtonState {
     Pressed,
 }
 
-/// 一个简单的按钮组件。
 pub struct Button {
     bounds: Rect,
+    #[allow(dead_code)]
     label: String,
     state: ButtonState,
-    /// 点击回调。`true` 表示事件已处理。
     on_click: Box<dyn FnMut() -> bool>,
 }
 
@@ -66,15 +64,17 @@ impl Widget for Button {
     }
 
     fn on_mouse_down(&mut self, _px: f32, _py: f32) -> bool {
+        eprintln!("[Button] mouse_down → Pressed");
         self.state = ButtonState::Pressed;
         true
     }
 
     fn on_mouse_up(&mut self, px: f32, py: f32) -> bool {
+        eprintln!("[Button] mouse_up");
         if self.state == ButtonState::Pressed {
             self.state = ButtonState::Hovered;
-            // 如果鼠标仍在按钮内，触发点击
             if self.bounds.contains(px, py) {
+                eprintln!("[Button] click fired");
                 return (self.on_click)();
             }
         }
@@ -83,10 +83,12 @@ impl Widget for Button {
     }
 
     fn on_mouse_enter(&mut self) {
+        eprintln!("[Button] enter → Hovered");
         self.state = ButtonState::Hovered;
     }
 
     fn on_mouse_leave(&mut self) {
+        eprintln!("[Button] leave → Normal");
         self.state = ButtonState::Normal;
     }
 }

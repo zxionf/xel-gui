@@ -31,6 +31,7 @@ impl UiRoot {
     }
 
     /// 获取组件的可变引用（按索引）。
+    #[allow(dead_code)]
     pub fn get_mut(&mut self, index: usize) -> Option<&mut Box<dyn Widget>> {
         self.widgets.get_mut(index)
     }
@@ -44,7 +45,6 @@ impl UiRoot {
 
     /// 分发鼠标移动事件。返回消费了事件的 widget 索引（如果有）。
     pub fn handle_mouse_move(&mut self, px: f32, py: f32) -> Option<usize> {
-        // 自顶向下查找（后面的在上层）
         let mut new_hovered = None;
         for (i, w) in self.widgets.iter().enumerate().rev() {
             if w.hit_test(px, py) {
@@ -53,8 +53,11 @@ impl UiRoot {
             }
         }
 
-        // enter / leave
         if new_hovered != self.hovered {
+            eprintln!(
+                "[UiRoot] hover 变化: {:?} → {:?}  @ ({px:.0},{py:.0})",
+                self.hovered, new_hovered
+            );
             if let Some(old) = self.hovered {
                 self.widgets[old].on_mouse_leave();
             }
@@ -69,7 +72,7 @@ impl UiRoot {
 
     /// 分发鼠标按下事件。
     pub fn handle_mouse_down(&mut self, px: f32, py: f32) -> bool {
-        // 自顶向下
+        eprintln!("[UiRoot] mouse_down @ ({px:.0},{py:.0})");
         for (i, w) in self.widgets.iter_mut().enumerate().rev() {
             if w.hit_test(px, py) {
                 if w.on_mouse_down(px, py) {
@@ -83,13 +86,12 @@ impl UiRoot {
 
     /// 分发鼠标释放事件。
     pub fn handle_mouse_up(&mut self, px: f32, py: f32) -> bool {
+        eprintln!("[UiRoot] mouse_up @ ({px:.0},{py:.0})");
         let active = self.active.take();
         if let Some(idx) = active {
-            // 事件发给 active widget（即使鼠标移出也发，按钮用来自行判断）
             self.widgets[idx].on_mouse_up(px, py);
             return true;
         }
-        // 也尝试分发给当前悬停的 widget
         if let Some(idx) = self.hovered {
             return self.widgets[idx].on_mouse_up(px, py);
         }

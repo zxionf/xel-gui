@@ -1,18 +1,13 @@
-mod render;
-mod ui;
-
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
     event::{ElementState, MouseButton, WindowEvent},
-    event_loop::{ActiveEventLoop, EventLoop},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
 
-use render::Renderer2D;
-use ui::button::Button;
-use ui::UiRoot;
+use xelgui::{Button, Renderer2D, UiRoot};
 
 struct State {
     surface: wgpu::Surface<'static>,
@@ -24,7 +19,6 @@ struct State {
 
     renderer: Renderer2D,
     ui: UiRoot,
-    /// 最近一次鼠标位置（物理像素）。
     mouse_pos: (f32, f32),
 }
 
@@ -98,10 +92,8 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        // --- 创建 2D 渲染器 ---
         let renderer = Renderer2D::new(&device, surface_format, size.width, size.height);
 
-        // --- 创建 UI 并添加一个按钮 ---
         let mut ui = UiRoot::new();
         ui.add(Button::new(
             300.0,
@@ -144,8 +136,24 @@ impl State {
         }
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let frame = self.surface.get_current_texture()?;
+    fn render(&mut self) {
+        let frame = match self.surface.get_current_texture() {
+            Ok(f) => f,
+            Err(wgpu::SurfaceError::Lost) => {
+                eprintln!("[渲染错误] Surface 丢失");
+                return;
+            }
+            Err(wgpu::SurfaceError::Outdated) => {
+                // Surface 过期，等 resize 重建
+                return;
+            }
+            Err(wgpu::SurfaceError::Timeout) => return,
+            Err(wgpu::SurfaceError::OutOfMemory) => {
+                eprintln!("GPU 内存不足");
+                return;
+            }
+        };
+
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -153,10 +161,14 @@ impl State {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        // 清屏
+        self.renderer
+            .begin_frame(self.size.width, self.size.height);
+        self.ui.draw(&mut self.renderer);
+        self.renderer.upload(&self.queue);
+
         {
-            let _clear = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("xelgui-pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
@@ -174,34 +186,11 @@ impl State {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-        }
-
-        // 收集 UI 绘制命令并渲染
-        self.renderer
-            .begin_frame(self.size.width, self.size.height);
-        self.ui.draw(&mut self.renderer);
-
-        {
-            let mut ui_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("xelgui-ui-pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            self.renderer.end_frame(&mut ui_pass, &self.queue);
+            self.renderer.draw(&mut pass);
         }
 
         self.queue.submit([encoder.finish()]);
         frame.present();
-        Ok(())
     }
 }
 
@@ -247,21 +236,7 @@ impl ApplicationHandler for App {
                 state.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
-                match state.render() {
-                    Ok(()) => {}
-                    Err(wgpu::SurfaceError::Lost) => {
-                        eprintln!("[渲染错误] Surface 丢失，应用退出");
-                        event_loop.exit();
-                        return;
-                    }
-                    Err(wgpu::SurfaceError::Outdated) => {}
-                    Err(wgpu::SurfaceError::Timeout) => {}
-                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                        eprintln!("GPU 内存不足");
-                        event_loop.exit();
-                        return;
-                    }
-                }
+                state.render();
             }
 
             // --- 鼠标事件 → UI ---
@@ -297,7 +272,7 @@ impl ApplicationHandler for App {
 
 fn main() {
     let event_loop = EventLoop::new().expect("创建 EventLoop 失败");
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+    event_loop.set_control_flow(ControlFlow::Wait);
     let mut app = App { state: None };
     event_loop.run_app(&mut app).expect("EventLoop 运行失败");
 }

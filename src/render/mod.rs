@@ -75,7 +75,7 @@ const MAX_INDICES: u64 = 24576;
 // ---------------------------------------------------------------------------
 // Renderer2D — 批处理 2D 渲染器
 // ---------------------------------------------------------------------------
-pub(crate) struct Renderer2D {
+pub struct Renderer2D {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
@@ -89,6 +89,9 @@ pub(crate) struct Renderer2D {
     // 当前帧的屏幕尺寸
     screen_width: f32,
     screen_height: f32,
+
+    // 上传后缓存的索引数量（避免 end_frame 中重复计算）
+    uploaded_index_count: u32,
 }
 
 impl Renderer2D {
@@ -198,6 +201,7 @@ impl Renderer2D {
             indices: Vec::with_capacity(1536),
             screen_width: screen_width as f32,
             screen_height: screen_height as f32,
+            uploaded_index_count: 0,
         }
     }
 
@@ -207,9 +211,10 @@ impl Renderer2D {
         self.screen_height = screen_height as f32;
         self.vertices.clear();
         self.indices.clear();
+        self.uploaded_index_count = 0;
     }
 
-    /// 向批次中添加一个实心矩形。坐标原点为窗口左上角，Y 轴向下。
+    /// 向批次中添加一个实心矩形。
     pub fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
         let base = self.vertices.len() as u32;
 
@@ -234,54 +239,53 @@ impl Renderer2D {
             .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
-    /// 结束批次，上传数据到 GPU 并发出绘制命令。
-    pub fn end_frame<'a>(
-        &'a self,
-        render_pass: &mut wgpu::RenderPass<'a>,
-        queue: &wgpu::Queue,
-    ) {
+    pub fn upload(&mut self, queue: &wgpu::Queue) {
         if self.vertices.is_empty() {
+            eprintln!("[Renderer] upload: 0 vertices, skipped");
             return;
         }
 
-        // 更新投影矩阵
+        // 打印第一个顶点的颜色（用于诊断）
+        let c0 = self.vertices[0].color;
+        eprintln!(
+            "[Renderer] upload: {} verts, {} indices, v0.color=[{:.2},{:.2},{:.2},{:.2}]",
+            self.vertices.len(),
+            self.indices.len(),
+            c0[0], c0[1], c0[2], c0[3]
+        );
+
         let uniforms = Self::build_projection(
             self.screen_width as u32,
             self.screen_height as u32,
         );
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
-        // 上传顶点数据
         let vdata = bytemuck::cast_slice(&self.vertices);
-        let vlen = vdata.len() as u64;
-        let vcap = self.vertex_buffer.size();
-        if vlen <= vcap {
-            queue.write_buffer(&self.vertex_buffer, 0, vdata);
-        } else {
-            queue.write_buffer(&self.vertex_buffer, 0, &vdata[..vcap as usize]);
-        }
+        let vlen = (vdata.len() as u64).min(self.vertex_buffer.size());
+        queue.write_buffer(&self.vertex_buffer, 0, &vdata[..vlen as usize]);
 
-        // 上传索引数据
         let idata = bytemuck::cast_slice(&self.indices);
-        let ilen = idata.len() as u64;
-        let icap = self.index_buffer.size();
-        if ilen <= icap {
-            queue.write_buffer(&self.index_buffer, 0, idata);
-        } else {
-            queue.write_buffer(&self.index_buffer, 0, &idata[..icap as usize]);
-        }
+        let ilen = (idata.len() as u64).min(self.index_buffer.size());
+        queue.write_buffer(&self.index_buffer, 0, &idata[..ilen as usize]);
 
-        let index_count = self.indices.len().min(MAX_INDICES as usize) as u32;
+        self.uploaded_index_count = self.indices.len().min(MAX_INDICES as usize) as u32;
+    }
+
+    pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        if self.uploaded_index_count == 0 {
+            eprintln!("[Renderer] draw: 0 indices, skipped");
+            return;
+        }
+        eprintln!("[Renderer] draw: {} indices", self.uploaded_index_count);
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-        render_pass.draw_indexed(0..index_count, 0, 0..1);
+        render_pass.draw_indexed(0..self.uploaded_index_count, 0, 0..1);
     }
 
     fn build_projection(w: u32, h: u32) -> Uniforms {
-        // 正交投影：左上角 (0,0)，Y 轴向下
         let proj = glam::Mat4::orthographic_rh_gl(0.0, w as f32, h as f32, 0.0, -1.0, 1.0);
         Uniforms {
             projection: proj.to_cols_array_2d(),
