@@ -1,0 +1,9 @@
+[package]
+name = "xelgui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+winit = { version = "0.30.13", features = ["wayland"] }
+wgpu = "0.20"
+pollster = "0.4"
