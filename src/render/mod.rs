@@ -1,9 +1,6 @@
 use std::mem;
 use wgpu::util::DeviceExt;
 
-// ---------------------------------------------------------------------------
-// 顶点格式：2D 位置 + RGBA 颜色
-// ---------------------------------------------------------------------------
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct Vertex2D {
@@ -24,18 +21,12 @@ impl Vertex2D {
     }
 }
 
-// ---------------------------------------------------------------------------
-// 投影矩阵 uniform
-// ---------------------------------------------------------------------------
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
     projection: [[f32; 4]; 4],
 }
 
-// ---------------------------------------------------------------------------
-// WGSL 着色器
-// ---------------------------------------------------------------------------
 const SHADER_SRC: &str = r#"
 struct VertexInput {
     @location(0) position: vec2<f32>,
@@ -68,13 +59,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-// 批次最大容量
 const MAX_VERTICES: u64 = 16384;
 const MAX_INDICES: u64 = 24576;
 
-// ---------------------------------------------------------------------------
-// Renderer2D — 批处理 2D 渲染器
-// ---------------------------------------------------------------------------
 pub struct Renderer2D {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
@@ -82,15 +69,11 @@ pub struct Renderer2D {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
 
-    // CPU 端批次缓冲区
     vertices: Vec<Vertex2D>,
     indices: Vec<u32>,
 
-    // 当前帧的屏幕尺寸
     screen_width: f32,
     screen_height: f32,
-
-    // 上传后缓存的索引数量（避免 end_frame 中重复计算）
     uploaded_index_count: u32,
 }
 
@@ -101,13 +84,11 @@ impl Renderer2D {
         screen_width: u32,
         screen_height: u32,
     ) -> Self {
-        // --- 着色器 ---
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("xelgui-2d-shader"),
             source: wgpu::ShaderSource::Wgsl(SHADER_SRC.into()),
         });
 
-        // --- Bind group layout ---
         let bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("xelgui-uniform-bgl"),
@@ -130,7 +111,6 @@ impl Renderer2D {
                 push_constant_ranges: &[],
             });
 
-        // --- 渲染管线 ---
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("xelgui-2d-pipeline"),
             layout: Some(&pipeline_layout),
@@ -159,7 +139,6 @@ impl Renderer2D {
             multiview: None,
         });
 
-        // --- Uniform buffer ---
         let uniforms = Self::build_projection(screen_width, screen_height);
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("xelgui-uniform"),
@@ -176,7 +155,6 @@ impl Renderer2D {
             }],
         });
 
-        // --- 预分配顶点 & 索引 GPU buffer ---
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("xelgui-vbuf"),
             size: MAX_VERTICES * mem::size_of::<Vertex2D>() as u64,
@@ -205,7 +183,6 @@ impl Renderer2D {
         }
     }
 
-    /// 每帧开始时调用，清空批次。
     pub fn begin_frame(&mut self, screen_width: u32, screen_height: u32) {
         self.screen_width = screen_width as f32;
         self.screen_height = screen_height as f32;
@@ -214,7 +191,6 @@ impl Renderer2D {
         self.uploaded_index_count = 0;
     }
 
-    /// 向批次中添加一个实心矩形。
     pub fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
         let base = self.vertices.len() as u32;
 
@@ -239,15 +215,30 @@ impl Renderer2D {
             .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
+    /// 描边矩形（空心边框）。用四条窄矩形拼成。
+    pub fn stroke_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        thickness: f32,
+        color: [f32; 4],
+    ) {
+        let t = thickness;
+        self.fill_rect(x, y, w, t, color); // 上
+        self.fill_rect(x, y + h - t, w, t, color); // 下
+        self.fill_rect(x, y + t, t, h - 2.0 * t, color); // 左
+        self.fill_rect(x + w - t, y + t, t, h - 2.0 * t, color); // 右
+    }
+
     pub fn upload(&mut self, queue: &wgpu::Queue) {
         if self.vertices.is_empty() {
             return;
         }
 
-        let uniforms = Self::build_projection(
-            self.screen_width as u32,
-            self.screen_height as u32,
-        );
+        let uniforms =
+            Self::build_projection(self.screen_width as u32, self.screen_height as u32);
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
         let vdata = bytemuck::cast_slice(&self.vertices);

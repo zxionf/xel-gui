@@ -96,6 +96,7 @@ impl State {
         let renderer = Renderer2D::new(&device, surface_format, size.width, size.height);
 
         let mut ui = UiRoot::new();
+        ui.set_debug(true);
         ui.add(Button::new(
             300.0,
             250.0,
@@ -223,7 +224,7 @@ impl ApplicationHandler for App {
             let state = pollster::block_on(State::new(window));
             self.state = Some(state);
             self.state.as_ref().unwrap().window.request_redraw();
-            event_loop.set_control_flow(ControlFlow::Poll);
+            // event_loop.set_control_flow(ControlFlow::Poll);
         }
     }
 
@@ -246,7 +247,7 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(new_size) => {
                 state.resize(new_size);
                 state.window.request_redraw();
-                event_loop.set_control_flow(ControlFlow::Poll);
+                // event_loop.set_control_flow(ControlFlow::Poll);
             }
             WindowEvent::RedrawRequested => {
                 state.render();
@@ -259,7 +260,7 @@ impl ApplicationHandler for App {
                 state.mouse_pos = (px, py);
                 state.ui.handle_mouse_move(px, py);
                 state.window.request_redraw();
-                event_loop.set_control_flow(ControlFlow::Poll);
+                // event_loop.set_control_flow(ControlFlow::Poll);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -269,7 +270,7 @@ impl ApplicationHandler for App {
                 let (px, py) = state.mouse_pos;
                 state.ui.handle_mouse_down(px, py);
                 state.window.request_redraw();
-                event_loop.set_control_flow(ControlFlow::Poll);
+                // event_loop.set_control_flow(ControlFlow::Poll);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Released,
@@ -279,7 +280,7 @@ impl ApplicationHandler for App {
                 let (px, py) = state.mouse_pos;
                 state.ui.handle_mouse_up(px, py);
                 state.window.request_redraw();
-                event_loop.set_control_flow(ControlFlow::Poll);
+                // event_loop.set_control_flow(ControlFlow::Poll);
             }
             _ => {}
         }
