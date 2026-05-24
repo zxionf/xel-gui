@@ -157,7 +157,6 @@ impl State {
                 }
             }
             Err(wgpu::SurfaceError::Timeout) => {
-                eprintln!("[Render] Timeout");
                 return;
             }
             Err(wgpu::SurfaceError::OutOfMemory) => {
@@ -223,8 +222,8 @@ impl ApplicationHandler for App {
 
             let state = pollster::block_on(State::new(window));
             self.state = Some(state);
-            // 请求初始帧
             self.state.as_ref().unwrap().window.request_redraw();
+            event_loop.set_control_flow(ControlFlow::Poll);
         }
     }
 
@@ -247,9 +246,11 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(new_size) => {
                 state.resize(new_size);
                 state.window.request_redraw();
+                event_loop.set_control_flow(ControlFlow::Poll);
             }
             WindowEvent::RedrawRequested => {
                 state.render();
+                event_loop.set_control_flow(ControlFlow::Wait);
             }
 
             WindowEvent::CursorMoved { position, .. } => {
@@ -258,6 +259,7 @@ impl ApplicationHandler for App {
                 state.mouse_pos = (px, py);
                 state.ui.handle_mouse_move(px, py);
                 state.window.request_redraw();
+                event_loop.set_control_flow(ControlFlow::Poll);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -267,6 +269,7 @@ impl ApplicationHandler for App {
                 let (px, py) = state.mouse_pos;
                 state.ui.handle_mouse_down(px, py);
                 state.window.request_redraw();
+                event_loop.set_control_flow(ControlFlow::Poll);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Released,
@@ -276,6 +279,7 @@ impl ApplicationHandler for App {
                 let (px, py) = state.mouse_pos;
                 state.ui.handle_mouse_up(px, py);
                 state.window.request_redraw();
+                event_loop.set_control_flow(ControlFlow::Poll);
             }
             _ => {}
         }
@@ -284,8 +288,7 @@ impl ApplicationHandler for App {
 
 fn main() {
     let event_loop = EventLoop::new().expect("创建 EventLoop 失败");
-    // Poll 确保 Wayland 下 request_redraw 能被及时处理
-    event_loop.set_control_flow(ControlFlow::Poll);
+    event_loop.set_control_flow(ControlFlow::Wait);
     let mut app = App { state: None };
     event_loop.run_app(&mut app).expect("EventLoop 运行失败");
 }
