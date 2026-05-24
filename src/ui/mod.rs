@@ -1,5 +1,6 @@
 pub mod button;
 pub mod color;
+pub mod label;
 pub mod widget;
 
 use crate::render::Renderer2D;

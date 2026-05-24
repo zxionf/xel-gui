@@ -9,3 +9,4 @@ wgpu = "0.20"
 pollster = "0.4"
 glam = { version = "0.28", features = ["bytemuck"] }
 bytemuck = { version = "1", features = ["derive"] }
+fontdue = "0.9"

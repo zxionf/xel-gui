@@ -9,5 +9,6 @@ pub use winit;
 pub use render::Renderer2D;
 pub use ui::button::Button;
 pub use ui::color::Color;
+pub use ui::label::Label;
 pub use ui::widget::{Rect, Widget};
 pub use ui::UiRoot;

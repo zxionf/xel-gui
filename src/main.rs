@@ -7,7 +7,11 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use xelgui::{Button, Renderer2D, UiRoot};
+use xelgui::{Button, Color, Label, Renderer2D, UiRoot};
+
+/// 默认中文字体（思源黑体 CN）。同时覆盖 ASCII / 拉丁字符。
+const DEFAULT_FONT_PATH: &str =
+    "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Normal.otf";
 
 struct State {
     surface: wgpu::Surface<'static>,
@@ -93,10 +97,43 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let renderer = Renderer2D::new(&device, surface_format, size.width, size.height);
+        // 加载字体
+        let font_data = std::fs::read(DEFAULT_FONT_PATH).unwrap_or_else(|e| {
+            eprintln!(
+                "[字体] 无法从 {} 读取字体: {e}。将使用 A rial 替代。",
+                DEFAULT_FONT_PATH
+            );
+            // 尝试其他常见路径
+            let fallbacks = [
+                "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/TTF/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            ];
+            for path in fallbacks {
+                if let Ok(data) = std::fs::read(path) {
+                    println!("[字体] 使用: {path}");
+                    return data;
+                }
+            }
+            panic!("找不到任何可用字体文件");
+        });
+
+        let mut renderer = Renderer2D::new(
+            &device,
+            surface_format,
+            size.width,
+            size.height,
+            &font_data,
+        );
 
         let mut ui = UiRoot::new();
         ui.set_debug(true);
+        renderer.set_debug(true);
+
+        // 标题文本
+        ui.add(Label::new(300.0, 150.0, "Hello, XelGUI!", 32.0).with_color(Color::WHITE));
+
+        // 按钮
         ui.add(Button::new(
             300.0,
             250.0,
@@ -108,6 +145,16 @@ impl State {
                 true
             },
         ));
+
+        // 按钮下方说明文字
+        ui.add(
+            Label::new(300.0, 340.0, "Press the button above", 18.0)
+                .with_color(Color::new(0.6, 0.6, 0.6, 1.0)),
+        );
+        ui.add(
+            Label::new(300.0, 440.0, "中文显示", 18.0)
+                .with_color(Color::new(0.6, 0.6, 0.6, 1.0)),
+        );
 
         Self {
             surface,
@@ -198,6 +245,7 @@ impl State {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+
             self.renderer.draw(&mut pass);
         }
 
@@ -224,7 +272,6 @@ impl ApplicationHandler for App {
             let state = pollster::block_on(State::new(window));
             self.state = Some(state);
             self.state.as_ref().unwrap().window.request_redraw();
-            // event_loop.set_control_flow(ControlFlow::Poll);
         }
     }
 
@@ -247,11 +294,9 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(new_size) => {
                 state.resize(new_size);
                 state.window.request_redraw();
-                // event_loop.set_control_flow(ControlFlow::Poll);
             }
             WindowEvent::RedrawRequested => {
                 state.render();
-                event_loop.set_control_flow(ControlFlow::Wait);
             }
 
             WindowEvent::CursorMoved { position, .. } => {
@@ -260,7 +305,6 @@ impl ApplicationHandler for App {
                 state.mouse_pos = (px, py);
                 state.ui.handle_mouse_move(px, py);
                 state.window.request_redraw();
-                // event_loop.set_control_flow(ControlFlow::Poll);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -270,7 +314,6 @@ impl ApplicationHandler for App {
                 let (px, py) = state.mouse_pos;
                 state.ui.handle_mouse_down(px, py);
                 state.window.request_redraw();
-                // event_loop.set_control_flow(ControlFlow::Poll);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Released,
@@ -280,7 +323,6 @@ impl ApplicationHandler for App {
                 let (px, py) = state.mouse_pos;
                 state.ui.handle_mouse_up(px, py);
                 state.window.request_redraw();
-                // event_loop.set_control_flow(ControlFlow::Poll);
             }
             _ => {}
         }
