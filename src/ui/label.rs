@@ -13,7 +13,8 @@ pub struct Label {
 impl Label {
     pub fn new(x: f32, y: f32, text: impl Into<String>, font_size: f32) -> Self {
         Self {
-            bounds: Rect::new(x, y, 0.0, font_size),
+            // TODO 计算文本宽度
+            bounds: Rect::new(x, y, 100.0, font_size),
             text: text.into(),
             font_size,
             color: Color::WHITE,

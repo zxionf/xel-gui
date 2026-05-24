@@ -1,13 +1,13 @@
-use std::sync::Arc;
+use std::{process::exit, sync::Arc};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{ElementState, MouseButton, WindowEvent},
+    event::{ ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
 
-use xelgui::{Button, Color, Label, Renderer2D, UiRoot};
+use xelgui::{Button, Color, Label, Renderer2D, UiRoot, VBox};
 
 /// 默认中文字体（思源黑体 CN）。同时覆盖 ASCII / 拉丁字符。
 const DEFAULT_FONT_PATH: &str =
@@ -130,31 +130,32 @@ impl State {
         ui.set_debug(true);
         renderer.set_debug(true);
 
-        // 标题文本
-        ui.add(Label::new(300.0, 150.0, "Hello, XelGUI!", 32.0).with_color(Color::WHITE));
-
-        // 按钮
-        ui.add(Button::new(
-            300.0,
-            250.0,
-            200.0,
-            60.0,
-            "Click me!",
+        // VBox 垂直布局：标题 + 按钮 + 说明文字
+        let mut vbox = VBox::new(12.0);
+        vbox.push(Label::new(0.0, 0.0, "Hello, XelGUI!", 32.0).with_color(Color::WHITE));
+        vbox.push(Label::new(0.0, 0.0, "中文标题", 24.0).with_color(Color::new(0.3, 0.8, 0.5, 1.0)));
+        vbox.push(Label::new(0.0, 0.0, "Press the button below", 18.0).with_color(Color::new(0.7, 0.7, 0.7, 1.0)));
+        vbox.push(Button::new(
+            0.0, 0.0, 200.0, 60.0, "Click me!",
             || {
                 println!("[UI] 按钮被点击！");
                 true
             },
         ));
+        vbox.set_position(300.0, 150.0);
+        ui.add(vbox);
 
-        // 按钮下方说明文字
-        ui.add(
-            Label::new(300.0, 340.0, "Press the button above", 18.0)
-                .with_color(Color::new(0.6, 0.6, 0.6, 1.0)),
-        );
-        ui.add(
-            Label::new(300.0, 440.0, "中文显示", 18.0)
-                .with_color(Color::new(0.6, 0.6, 0.6, 1.0)),
-        );
+        // 右下角退出按钮（独立于 VBox）
+        ui.add(Button::new(
+            (window.inner_size().width - 200) as f32,
+            (window.inner_size().height - 60) as f32,
+            200.0,
+            60.0,
+            "Exit",
+            || {
+                exit(0);
+            },
+        ));
 
         Self {
             surface,

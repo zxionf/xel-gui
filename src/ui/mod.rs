@@ -1,6 +1,7 @@
 pub mod button;
 pub mod color;
 pub mod label;
+pub mod vbox;
 pub mod widget;
 
 use crate::render::Renderer2D;
