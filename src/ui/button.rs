@@ -61,6 +61,13 @@ impl Widget for Button {
             self.bounds.h,
             self.current_color().to_array(),
         );
+        renderer.draw_text(
+            &self.label,
+            self.bounds.x,
+            self.bounds.y,
+            16.0,
+            Color::BLACK.to_array(),
+        );
     }
 
     fn on_mouse_down(&mut self, _px: f32, _py: f32) -> bool {
