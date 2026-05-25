@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use wgpu::{ExperimentalFeatures, MemoryHints};
 use winit::application::ApplicationHandler;
 use winit::error::EventLoopError;
 use winit::event::{KeyEvent, WindowEvent};
@@ -13,13 +14,13 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     window: Arc<Window>,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl State {
     pub async fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
         println!("[winit][窗口]大小:{}x{}", size.width, size.height);
-        let window = Arc::new(window);
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::VULKAN,
@@ -46,14 +47,14 @@ impl State {
         );
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                experimental_features: ExperimentalFeatures::disabled(),
+                memory_hints: MemoryHints::default(),
+                trace: wgpu::Trace::Off,
+            })
             .await
             .expect("创建 Device 失败");
 
@@ -82,12 +83,69 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[],
+                immediate_size: 0,
+            });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"), // 1.
+                buffers: &[],                 // 2.
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                // 3.
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    // 4.
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList, // 1.
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw, // 2.
+                cull_mode: Some(wgpu::Face::Back),
+                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                polygon_mode: wgpu::PolygonMode::Fill,
+                // Requires Features::DEPTH_CLIP_CONTROL
+                unclipped_depth: false,
+                // Requires Features::CONSERVATIVE_RASTERIZATION
+                conservative: false,
+            },
+            depth_stencil: None, // 1.
+            multisample: wgpu::MultisampleState {
+                count: 1,                         // 2.
+                mask: !0,                         // 3.
+                alpha_to_coverage_enabled: false, // 4.
+            },
+            multiview_mask: None, // 5.
+            cache: None,          // 6.
+        });
+
         Self {
             surface,
             device,
             queue,
             config,
-            window
+            is_surface_configured: true,
+            window,
+            render_pipeline
         }
     }
 
@@ -107,38 +165,74 @@ impl State {
         }
     }
 
-    fn update(mut self) {}
-
-    pub fn render(&mut self) -> anyhow::Result<()> {
-        self.window.request_redraw();
-        // We can't render unless the surface is configured
+    // 返回值改为 Result<(), wgpu::SurfaceError>
+    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         if !self.is_surface_configured {
             return Ok(());
         }
+
+        let output = match self.surface.get_current_texture() {
+            Ok(frame) => frame,
+            Err(e) => return Err(e), // 直接向上传递
+        };
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            render_pass.set_pipeline(&self.render_pipeline); // 2.
+            render_pass.draw(0..3, 0..1); // 3.
+        }
+
+        self.queue.submit([encoder.finish()]);
+        output.present();
+
+        Ok(())
     }
 }
 
 #[derive(Default)]
 struct App {
-    #[cfg(target_arch = "wasm32")]
-    proxy: Option<winit::event_loop::EventLoopProxy<State>>,
     state: Option<State>,
 }
 
 impl App {
-    pub fn new(#[cfg(target_arch = "wasm32")] event_loop: &EventLoop<State>) -> Self {
-        #[cfg(target_arch = "wasm32")]
-        let proxy = Some(event_loop.create_proxy());
-        Self {
-            state: None,
-            #[cfg(target_arch = "wasm32")]
-            proxy,
-        }
+    pub fn new() -> Self {
+        Self { state: None }
     }
 
     pub fn run() -> Result<(), EventLoopError> {
         env_logger::init();
-        let event_loop = EventLoop::with_user_event().build()?;
+        let event_loop = EventLoop::<State>::with_user_event().build()?;
         let mut app = App::new();
         event_loop.run_app(&mut app)
     }
@@ -146,54 +240,16 @@ impl App {
 
 impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        #[allow(unused_mut)]
-        let mut window_attributes = Window::default_attributes();
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            use wasm_bindgen::JsCast;
-            use winit::platform::web::WindowAttributesExtWebSys;
-
-            const CANVAS_ID: &str = "canvas";
-
-            let window = wgpu::web_sys::window().unwrap_throw();
-            let document = window.document().unwrap_throw();
-            let canvas = document.get_element_by_id(CANVAS_ID).unwrap_throw();
-            let html_canvas_element = canvas.unchecked_into();
-            window_attributes = window_attributes.with_canvas(Some(html_canvas_element));
-        }
-
+        let window_attributes = Window::default_attributes();
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            // If we are not on web we can use pollster to
-            // await the window creation
-            self.state = Some(pollster::block_on(State::new(window)).unwrap());
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            // Run the future asynchronously and use the
-            // proxy to send the results to the event loop
-            if let Some(proxy) = self.proxy.take() {
-                wasm_bindgen_futures::spawn_local(async move {
-                    assert!(
-                        proxy
-                            .send_event(
-                                State::new(window)
-                                    .await
-                                    .expect("Unable to create canvas!!!")
-                            )
-                            .is_ok()
-                    )
-                });
-            }
+            self.state = Some(pollster::block_on(State::new(window)));
         }
     }
 
-    #[allow(unused_mut)]
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: State) {
         self.state = Some(event);
     }
 
@@ -204,7 +260,7 @@ impl ApplicationHandler<State> for App {
         event: WindowEvent,
     ) {
         let state = match &mut self.state {
-            Some(canvas) => canvas,
+            Some(s) => s,
             None => return,
         };
 
@@ -212,7 +268,18 @@ impl ApplicationHandler<State> for App {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
-                state.render();
+                // 根据错误的严重程度处理
+                match state.render() {
+                    Ok(()) => {}
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::OutOfMemory) => {
+                        eprintln!("致命渲染错误，程序退出");
+                        event_loop.exit();
+                    }
+                    Err(e) => {
+                        // Timeout / Outdated 仅跳过当前帧
+                        eprintln!("渲染跳过帧: {:?}", e);
+                    }
+                }
             }
             WindowEvent::KeyboardInput {
                 event:
