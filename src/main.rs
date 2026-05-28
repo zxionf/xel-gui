@@ -13,6 +13,7 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
+    #[allow(dead_code)]
     window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
 }
@@ -165,7 +166,6 @@ impl State {
         }
     }
 
-    // 返回值改为 Result<(), wgpu::SurfaceError>
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         if !self.is_surface_configured {
             return Ok(());
