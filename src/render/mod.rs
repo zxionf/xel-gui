@@ -208,6 +208,7 @@ impl Renderer2D {
                 label: Some("xelgui-solid-pipeline-layout"),
                 bind_group_layouts: &[&uniform_bgl],
                 push_constant_ranges: &[],
+                immediate_size: None,
             });
 
         let solid_pipeline =
@@ -216,13 +217,13 @@ impl Renderer2D {
                 layout: Some(&solid_pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &solid_shader,
-                    entry_point: "vs_main",
+                    entry_point: Some("vs_main"),
                     buffers: &[Vertex2D::desc()],
                     compilation_options: Default::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &solid_shader,
-                    entry_point: "fs_main",
+                    entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: surface_format,
                         blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -236,7 +237,8 @@ impl Renderer2D {
                 },
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: todo!(),
+                cache: todo!(),
             });
 
         // ── 纹理 pipeline ─────────────────────────────────
