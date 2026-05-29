@@ -1,5 +1,5 @@
 use std::{default, process::exit, sync::Arc};
-use wgpu::{ExperimentalFeatures, SurfaceError};
+use wgpu::{ExperimentalFeatures, MemoryHints, SurfaceError};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -213,7 +213,7 @@ impl State {
                 return;
             }
             Err(SurfaceError::Other) => {
-                eprintln!("[err][wgpu] 其他错误: {e:?}");
+                eprintln!("[err][wgpu] 其他错误: 未知错误");
                 return;
             }
         };

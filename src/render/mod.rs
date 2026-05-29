@@ -207,8 +207,7 @@ impl Renderer2D {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("xelgui-solid-pipeline-layout"),
                 bind_group_layouts: &[&uniform_bgl],
-                push_constant_ranges: &[],
-                immediate_size: None,
+                immediate_size: 32,
             });
 
         let solid_pipeline =
@@ -284,7 +283,7 @@ impl Renderer2D {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("xelgui-text-pipeline-layout"),
                 bind_group_layouts: &[&text_bgl],
-                push_constant_ranges: &[],
+                immediate_size: todo!(),
             });
 
         let text_pipeline =
@@ -293,13 +292,13 @@ impl Renderer2D {
                 layout: Some(&text_pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &text_shader,
-                    entry_point: "vs_main",
+                    entry_point: Some("vs_main"),
                     buffers: &[TextVertex::desc()],
                     compilation_options: Default::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &text_shader,
-                    entry_point: "fs_main",
+                    entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: surface_format,
                         blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -313,7 +312,8 @@ impl Renderer2D {
                 },
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: todo!(),
+                cache: todo!(),
             });
 
         // ── 共享资源 ─────────────────────────────────────
@@ -359,7 +359,7 @@ impl Renderer2D {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            // mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
 
@@ -601,29 +601,29 @@ impl Renderer2D {
         // 纹理
         if !self.text_vertices.is_empty() {
             // 更新图集纹理（如果脏了）
-            if self.glyph_cache.is_dirty() {
-                let (data, aw, ah) = self.glyph_cache.atlas_texture_data();
-                queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &self.glyph_texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    data,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(4 * aw),
-                        rows_per_image: Some(ah),
-                    },
-                    wgpu::Extent3d {
-                        width: aw,
-                        height: ah,
-                        depth_or_array_layers: 1,
-                    },
-                );
-                self.glyph_cache.clear_dirty();
-            }
+            // if self.glyph_cache.is_dirty() {
+            //     let (data, aw, ah) = self.glyph_cache.atlas_texture_data();
+            //     queue.write_texture(
+            //         wgpu::ImageCopyTexture {
+            //             texture: &self.glyph_texture,
+            //             mip_level: 0,
+            //             origin: wgpu::Origin3d::ZERO,
+            //             aspect: wgpu::TextureAspect::All,
+            //         },
+            //         data,
+            //         wgpu::ImageDataLayout {
+            //             offset: 0,
+            //             bytes_per_row: Some(4 * aw),
+            //             rows_per_image: Some(ah),
+            //         },
+            //         wgpu::Extent3d {
+            //             width: aw,
+            //             height: ah,
+            //             depth_or_array_layers: 1,
+            //         },
+            //     );
+            //     self.glyph_cache.clear_dirty();
+            // }
 
             let vdata = bytemuck::cast_slice(&self.text_vertices);
             let vlen = (vdata.len() as u64).min(self.text_vertex_buffer.size());
