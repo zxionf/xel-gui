@@ -1,11 +1,16 @@
+mod vertex;
+use crate::render::vertex::{VERTICES, Vertex};
+use wgpu::util::DeviceExt;
+
 pub struct Renderer2D {
     render_pipeline: wgpu::RenderPipeline,
-    // vertex_buffer: wgpu::Buffer,
+    vertex_buffer: wgpu::Buffer,
+    num_vertices: u32,
     // index_buffer: wgpu::Buffer,
     // num_indices: u32,
 }
 
-impl Renderer2D { 
+impl Renderer2D {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -25,7 +30,7 @@ impl Renderer2D {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"), // 1.
-                buffers: &[],                 // 2.
+                buffers: &[Vertex::desc()],   // 2.
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -61,11 +66,24 @@ impl Renderer2D {
             multiview_mask: None, // 5.
             cache: None,          // 6.
         });
-        Self { render_pipeline }
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let num_vertices = VERTICES.len() as u32;
+
+        Self {
+            render_pipeline,
+            vertex_buffer,
+            num_vertices,
+        }
     }
 
     pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.draw(0..3, 0..1);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.draw(0..self.num_vertices, 0..1);
     }
 }

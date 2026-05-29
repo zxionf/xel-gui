@@ -9,5 +9,5 @@ wgpu = "28.0"
 env_logger = "0.10"
 pollster = "0.4"
 glam = { version = "0.28", features = ["bytemuck"] }
-bytemuck = { version = "1", features = ["derive"] }
+bytemuck = { version = "1.24", features = ["derive"] }
 fontdue = "0.9"
