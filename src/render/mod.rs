@@ -1,6 +1,6 @@
 mod vertex;
 use crate::render::vertex::{VERTICES_F, INDICES_F, Vertex};
-use crate::texture::Texture;
+use crate::texture::TextureD;
 use wgpu::util::DeviceExt;
 
 pub struct Renderer2D {
@@ -9,12 +9,12 @@ pub struct Renderer2D {
     num_vertices: u32,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
-    texture: Texture,
+    texture: TextureD,
 }
 
 impl Renderer2D {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration,queue:&wgpu::Queue) -> Self {
-        let texture = Texture::new(device,queue);
+        let texture = TextureD::new(&device,&queue);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -91,7 +91,7 @@ impl Renderer2D {
             num_vertices: VERTICES_F.len() as u32,
             index_buffer,
             num_indices: INDICES_F.len() as u32,
-            texture: Texture::new(device,queue),
+            texture
         }
     }
 
