@@ -86,7 +86,7 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let renderer = Renderer2D::new(&device, &config);
+        let renderer = Renderer2D::new(&device, &config, &queue);
 
         Self {
             surface,
@@ -95,7 +95,7 @@ impl State {
             config,
             is_surface_configured: true,
             window,
-            renderer
+            renderer,
         }
     }
 
