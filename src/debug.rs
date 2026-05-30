@@ -1,11 +1,19 @@
-use std::{sync::Arc};
+use std::sync::Arc;
 use wgpu::{ExperimentalFeatures, MemoryHints, SurfaceError};
 use winit::{
-    application::ApplicationHandler, dpi::PhysicalSize, error::EventLoopError, event::{ElementState, KeyEvent, MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, ControlFlow, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowId}
+    application::ApplicationHandler,
+    dpi::PhysicalSize,
+    error::EventLoopError,
+    event::{ElementState, KeyEvent, MouseButton, WindowEvent},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
+    window::{Window, WindowId},
 };
 
-use xelgui::render::Renderer2D;
 use xelgui::camera::controller::CameraController;
+use xelgui::render::Renderer2D;
+use xelgui::ui::UIRoot;
+use xelgui::ui::debug::UIDebugFlag;
 
 /// 默认中文字体（思源黑体 CN）。同时覆盖 ASCII / 拉丁字符。
 // const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Normal.otf";
@@ -19,9 +27,10 @@ struct State {
     #[allow(dead_code)]
     window: Arc<Window>,
     size: PhysicalSize<u32>,
+    ui: UIRoot,
     renderer: Renderer2D,
     camera_controller: CameraController,
-    mouse_pos: (f32, f32),
+    mouse_pos: (i32, i32),
 }
 
 #[derive(Default)]
@@ -59,16 +68,14 @@ impl State {
         );
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
-                    experimental_features: ExperimentalFeatures::default(),
-                    memory_hints: MemoryHints::default(),
-                    trace: wgpu::Trace::Off,
-                }
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                experimental_features: ExperimentalFeatures::default(),
+                memory_hints: MemoryHints::default(),
+                trace: wgpu::Trace::Off,
+            })
             .await
             .expect("[err][egpu] Device 创建失败");
 
@@ -100,6 +107,9 @@ impl State {
         let renderer = Renderer2D::new(&device, &config, &queue);
         let camera_controller = CameraController::new(0.2);
 
+        let mut ui = UIRoot::new();
+        ui.set_debug(UIDebugFlag::DEBUG_WIDGETS | UIDebugFlag::DEBUG_EVENTS);
+
         // 加载字体
         // let font_data = std::fs::read(DEFAULT_FONT_PATH).unwrap_or_else(|e| {
         //     eprintln!(
@@ -129,9 +139,10 @@ impl State {
             is_surface_configured: true,
             window,
             size,
+            ui,
             renderer,
             camera_controller,
-            mouse_pos: (0.0, 0.0),
+            mouse_pos: (0, 0),
         }
     }
 
@@ -159,8 +170,12 @@ impl State {
     }
 
     fn update(&mut self) {
-        self.camera_controller.update_camera(&mut self.renderer.camera.camera);
-        self.renderer.camera.camera_uniform.update_view_proj(&self.renderer.camera.camera);
+        self.camera_controller
+            .update_camera(&mut self.renderer.camera.camera);
+        self.renderer
+            .camera
+            .camera_uniform
+            .update_view_proj(&self.renderer.camera.camera);
         self.queue.write_buffer(
             &self.renderer.camera.camera_buffer,
             0,
@@ -176,7 +191,7 @@ impl State {
             Err(SurfaceError::Lost) => {
                 eprintln!("[err][wgpu] Surface丢失");
                 return;
-            },
+            }
             Err(SurfaceError::Outdated) => {
                 eprintln!("[err][wgpu] Surface已过时");
                 self.surface.configure(&self.device, &self.config);
@@ -184,7 +199,7 @@ impl State {
                     Ok(f) => f,
                     Err(e) => {
                         eprintln!("[err][wgpu] Surface 重建后仍失败: {e:?}");
-                        return
+                        return;
                     }
                 }
             }
@@ -207,7 +222,9 @@ impl State {
             .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
 
         // self.renderer.begin_frame(self.size.width, self.size.height);
         // self.ui.draw(&mut self.renderer);
@@ -260,7 +277,11 @@ impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_none() {
             let window_attributes = Window::default_attributes();
-            let window = Arc::new(event_loop.create_window(window_attributes.with_title("xel-gui test")).unwrap());
+            let window = Arc::new(
+                event_loop
+                    .create_window(window_attributes.with_title("xel-gui test"))
+                    .unwrap(),
+            );
             self.state = Some(pollster::block_on(State::new(window)));
         }
     }
@@ -295,10 +316,10 @@ impl ApplicationHandler<State> for App {
             }
 
             WindowEvent::CursorMoved { position, .. } => {
-                let px = position.x as f32;
-                let py = position.y as f32;
+                let px = position.x as i32;
+                let py = position.y as i32;
                 state.mouse_pos = (px, py);
-                // state.ui.handle_mouse_move(px, py);
+                state.ui.handle_mouse_move(px, py);
                 state.window.request_redraw();
             }
             WindowEvent::MouseInput {
@@ -307,7 +328,7 @@ impl ApplicationHandler<State> for App {
                 ..
             } => {
                 let (px, py) = state.mouse_pos;
-                // state.ui.handle_mouse_down(px, py);
+                state.ui.handle_mouse_down(px, py);
                 state.window.request_redraw();
             }
             WindowEvent::MouseInput {
@@ -316,7 +337,7 @@ impl ApplicationHandler<State> for App {
                 ..
             } => {
                 let (px, py) = state.mouse_pos;
-                // state.ui.handle_mouse_up(px, py);
+                state.ui.handle_mouse_up(px, py);
                 state.window.request_redraw();
             }
             WindowEvent::KeyboardInput {
