@@ -1,24 +1,27 @@
-pub mod widget;
 pub mod debug;
+pub mod renderer;
+pub mod widget;
 
-use widget::Widget;
-use crate::render::Renderer2D;
 use debug::UIDebugFlag;
+use renderer::UIRenderer;
+use widget::Widget;
 
 pub struct UIRoot {
     widgets: Vec<Box<dyn Widget>>,
     hovered: Option<usize>,
     active: Option<usize>,
     debug_flags: UIDebugFlag,
+    pub renderer: UIRenderer,
 }
 
-impl UIRoot { 
-    pub fn new() -> Self {
+impl UIRoot {
+    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
         Self {
             widgets: vec![],
             hovered: None,
             active: None,
             debug_flags: UIDebugFlag::NONE,
+            renderer: UIRenderer::new(device, config),
         }
     }
 
@@ -30,18 +33,17 @@ impl UIRoot {
         self.widgets.push(widget);
     }
 
-    pub fn draw(&self, renderer: &mut Renderer2D) {
-        // TODO 排序
-        // 绘制
+    /// 遍历所有 widget，向 UI 渲染器提交绘制数据。
+    /// 调用前应先 `renderer.begin_frame(w, h)`，调用后应 `renderer.upload(queue)`。
+    pub fn draw(&mut self) {
         for w in self.widgets.iter() {
-            w.draw(renderer);
+            w.draw(&mut self.renderer);
+
+            if self.debug_flags.contains(UIDebugFlag::DEBUG_WIDGETS) {
+                let b = w.bounds();
+                self.renderer.stroke_rect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, 2.0, [0.0, 1.0, 0.0, 1.0]);
+            }
         }
-        // debug render
-        // if self.debug & UIDebugFlag::DebugWidgets as i8 != 0 {
-        //     for w in self.widgets.iter_mut() {
-        //         w.draw_debug(renderer);
-        //     }
-        // }
     }
 
     pub fn handle_mouse_move(&mut self, px: i32, py: i32) -> Option<usize> {
@@ -100,5 +102,14 @@ impl UIRoot {
             return self.widgets[idx].on_mouse_up(px, py);
         }
         false
+    }
+
+    pub fn handle_mouse_wheel(&mut self, dx:f32, dy:f32) {
+        if self.debug_flags.contains(UIDebugFlag::DEBUG_EVENTS) {
+            eprintln!("[UIRoot] mouse_wheel {dx} {dy}");
+        }
+        for w in self.widgets.iter_mut() {
+            w.on_mouse_wheel(dx, dy);
+        }
     }
 }

@@ -4,7 +4,7 @@ use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
     error::EventLoopError,
-    event::{ElementState, KeyEvent, MouseButton, WindowEvent},
+    event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
@@ -14,6 +14,7 @@ use xelgui::camera::controller::CameraController;
 use xelgui::render::Renderer2D;
 use xelgui::ui::UIRoot;
 use xelgui::ui::debug::UIDebugFlag;
+use xelgui::ui::widget::rectangle::Rectangle;
 
 /// 默认中文字体（思源黑体 CN）。同时覆盖 ASCII / 拉丁字符。
 // const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Normal.otf";
@@ -107,8 +108,31 @@ impl State {
         let renderer = Renderer2D::new(&device, &config, &queue);
         let camera_controller = CameraController::new(0.2);
 
-        let mut ui = UIRoot::new();
+        let mut ui = UIRoot::new(&device, &config);
         ui.set_debug(UIDebugFlag::DEBUG_WIDGETS | UIDebugFlag::DEBUG_EVENTS);
+
+        // 添加测试矩形
+        ui.add(Box::new(Rectangle::new(
+            50,
+            50,
+            200,
+            100,
+            [0.8, 0.2, 0.2, 0.9],
+        )));
+        ui.add(Box::new(Rectangle::new(
+            100,
+            200,
+            300,
+            60,
+            [0.2, 0.6, 0.2, 0.7],
+        )));
+        ui.add(Box::new(Rectangle::new(
+            20,
+            350,
+            150,
+            150,
+            [0.2, 0.3, 0.9, 0.8],
+        )));
 
         // 加载字体
         // let font_data = std::fs::read(DEFAULT_FONT_PATH).unwrap_or_else(|e| {
@@ -226,9 +250,12 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        // self.renderer.begin_frame(self.size.width, self.size.height);
-        // self.ui.draw(&mut self.renderer);
-        // self.renderer.upload(&self.queue);
+        // --- UI 准备：收集顶点 ---
+        self.ui
+            .renderer
+            .begin_frame(self.size.width, self.size.height);
+        self.ui.draw();
+        self.ui.renderer.upload(&self.queue);
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -253,7 +280,10 @@ impl State {
                 multiview_mask: None,
             });
 
+            // 3D 场景
             self.renderer.draw(&mut render_pass);
+            // UI 层（叠加在 3D 之上）
+            self.ui.renderer.draw(&mut render_pass);
         }
 
         self.queue.submit([encoder.finish()]);
@@ -338,6 +368,29 @@ impl ApplicationHandler<State> for App {
             } => {
                 let (px, py) = state.mouse_pos;
                 state.ui.handle_mouse_up(px, py);
+                state.window.request_redraw();
+            }
+            WindowEvent::MouseWheel {
+                device_id,
+                delta,
+                phase,
+            } => {
+                let (px, py) = state.mouse_pos;
+                state.ui.handle_mouse_move(px, py);
+                state.window.request_redraw();
+
+                let (dx, dy) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (x, y),
+                    MouseScrollDelta::PixelDelta(pos) => (pos.x as f32, pos.y as f32),
+                };
+
+                // if dy != 0.0 {
+                //     // 用 dy 的正负增加或减少缩放系数
+                //     state.zoom = (state.zoom + dy * 0.1).clamp(0.1, 10.0);
+                // }
+                state.ui.handle_mouse_wheel(dx, dy);
+
+                // 请求重绘以反映变化
                 state.window.request_redraw();
             }
             WindowEvent::KeyboardInput {
