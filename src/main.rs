@@ -123,7 +123,6 @@ impl State {
     }
 
     fn update(&mut self) {
-        println!("更新");
         self.camera_controller.update_camera(&mut self.renderer.camera.camera);
         self.renderer.camera.camera_uniform.update_view_proj(&self.renderer.camera.camera);
         self.queue.write_buffer(
@@ -209,11 +208,7 @@ impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes();
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.state = Some(pollster::block_on(State::new(window)));
-        }
+        self.state = Some(pollster::block_on(State::new(window)));
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: State) {
@@ -246,7 +241,6 @@ impl ApplicationHandler<State> for App {
                     Err(e) => {
                         // Timeout / Outdated 仅跳过当前帧
                         eprintln!("渲染跳过帧: {:?}", e);
-                        self.state.as_mut().unwrap().window.request_redraw();
                     }
                 }
             }
