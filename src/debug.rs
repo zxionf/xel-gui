@@ -9,7 +9,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use xelgui::{Button, Color, Label, Renderer2D, UiRoot, VBox};
+use xelgui::render::Renderer2D;
 
 /// 默认中文字体（思源黑体 CN）。同时覆盖 ASCII / 拉丁字符。
 const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Normal.otf";
