@@ -283,7 +283,7 @@ impl Renderer2D {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("xelgui-text-pipeline-layout"),
                 bind_group_layouts: &[&text_bgl],
-                immediate_size: todo!(),
+                immediate_size: 32,
             });
 
         let text_pipeline =
@@ -313,7 +313,7 @@ impl Renderer2D {
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
                 multiview_mask: todo!(),
-                cache: todo!(),
+                cache: None,
             });
 
         // ── 共享资源 ─────────────────────────────────────

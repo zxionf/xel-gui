@@ -1,17 +1,18 @@
 use std::{process::exit, sync::Arc};
+use wgpu::{ExperimentalFeatures, MemoryHints, SurfaceError};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{ ElementState, MouseButton, WindowEvent},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    error::EventLoopError,
+    event::{ElementState, MouseButton, WindowEvent},
+    event_loop::{ActiveEventLoop, EventLoop},
     window::{Window, WindowId},
 };
 
 use xelgui::{Button, Color, Label, Renderer2D, UiRoot, VBox};
 
 /// 默认中文字体（思源黑体 CN）。同时覆盖 ASCII / 拉丁字符。
-const DEFAULT_FONT_PATH: &str =
-    "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Normal.otf";
+const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Normal.otf";
 
 struct State {
     surface: wgpu::Surface<'static>,
@@ -27,20 +28,24 @@ struct State {
     mouse_pos: (f32, f32),
 }
 
-impl State {
-    async fn new(window: Window) -> Self {
-        let size = window.inner_size();
-        println!("[winit][窗口]大小:{}x{}", size.width, size.height);
-        let window = Arc::new(window);
+#[derive(Default)]
+pub struct App {
+    state: Option<State>,
+}
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+impl State {
+    async fn new(window: Arc<Window>) -> Self {
+        let size = window.inner_size();
+        println!("[winit][window]大小:{}x{}", size.width, size.height);
+
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::VULKAN,
             ..Default::default()
         });
 
         let surface = instance
             .create_surface(Arc::clone(&window))
-            .expect("创建 Surface 失败");
+            .expect("[err][wgpu] 创建 Surface 失败");
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -49,15 +54,12 @@ impl State {
                 force_fallback_adapter: false,
             })
             .await
-            .expect("找不到合适的 GPU 适配器");
+            .expect("[err][wgpu] 找不到合适的 GPU 适配器");
 
         let adapter_info = adapter.get_info();
         println!(
-            "[GPU] 名称: {}, 厂商: {}, 设备: {:?}, 后端: {:?}",
-            adapter_info.name,
-            adapter_info.vendor,
-            adapter_info.device_type,
-            adapter_info.backend
+            "[wgpu][Adapter] 名称: {}, 厂商: {}, 设备: {:?}, 后端: {:?}",
+            adapter_info.name, adapter_info.vendor, adapter_info.device_type, adapter_info.backend
         );
 
         let (device, queue) = adapter
@@ -66,11 +68,13 @@ impl State {
                     label: None,
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::default(),
-                },
-                None,
+                    experimental_features: ExperimentalFeatures::default(),
+                    memory_hints: MemoryHints::default(),
+                    trace: wgpu::Trace::Off,
+                }
             )
             .await
-            .expect("创建 Device 失败");
+            .expect("[err][egpu] 创建 Device 失败");
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -81,7 +85,7 @@ impl State {
             .unwrap_or(surface_caps.formats[0]);
 
         println!(
-            "[Surface] 选用格式: {:?}, 显示模式: {:?}",
+            "[wgpu][Surface] 选用格式: {:?}, 显示模式: {:?}",
             surface_format, surface_caps.present_modes[0]
         );
 
@@ -118,13 +122,8 @@ impl State {
             panic!("找不到任何可用字体文件");
         });
 
-        let mut renderer = Renderer2D::new(
-            &device,
-            surface_format,
-            size.width,
-            size.height,
-            &font_data,
-        );
+        let mut renderer =
+            Renderer2D::new(&device, surface_format, size.width, size.height, &font_data);
 
         let mut ui = UiRoot::new();
         ui.set_debug(true);
@@ -133,15 +132,17 @@ impl State {
         // VBox 垂直布局：标题 + 按钮 + 说明文字
         let mut vbox = VBox::new(12.0);
         vbox.push(Label::new(0.0, 0.0, "Hello, XelGUI!", 32.0).with_color(Color::WHITE));
-        vbox.push(Label::new(0.0, 0.0, "中文标题", 24.0).with_color(Color::new(0.3, 0.8, 0.5, 1.0)));
-        vbox.push(Label::new(0.0, 0.0, "Press the button below", 18.0).with_color(Color::new(0.7, 0.7, 0.7, 1.0)));
-        vbox.push(Button::new(
-            0.0, 0.0, 200.0, 60.0, "按钮",
-            || {
-                println!("[UI] 按钮被点击！");
-                true
-            },
-        ));
+        vbox.push(
+            Label::new(0.0, 0.0, "中文标题", 24.0).with_color(Color::new(0.3, 0.8, 0.5, 1.0)),
+        );
+        vbox.push(
+            Label::new(0.0, 0.0, "Press the button below", 18.0)
+                .with_color(Color::new(0.7, 0.7, 0.7, 1.0)),
+        );
+        vbox.push(Button::new(0.0, 0.0, 200.0, 60.0, "按钮", || {
+            println!("[UI] 按钮被点击！");
+            true
+        }));
         vbox.set_position(300.0, 150.0);
         ui.add(vbox);
 
@@ -174,10 +175,7 @@ impl State {
         if new_size.width > 0 && new_size.height > 0 {
             println!(
                 "[窗口] 尺寸改变: {}x{} -> {}x{}",
-                self.size.width,
-                self.size.height,
-                new_size.width,
-                new_size.height
+                self.size.width, self.size.height, new_size.width, new_size.height
             );
             self.size = new_size;
             self.config.width = new_size.width;
@@ -191,25 +189,31 @@ impl State {
 
         let frame = match self.surface.get_current_texture() {
             Ok(f) => f,
-            Err(wgpu::SurfaceError::Lost) => {
-                eprintln!("[Render] Surface 丢失");
+            Err(SurfaceError::Lost) => {
+                eprintln!("[err][wgpu] Surface丢失");
                 return;
-            }
-            Err(wgpu::SurfaceError::Outdated) => {
+            },
+            Err(SurfaceError::Outdated) => {
+                eprintln!("[err][wgpu] Surface已过时");
                 self.surface.configure(&self.device, &self.config);
                 match self.surface.get_current_texture() {
                     Ok(f) => f,
                     Err(e) => {
-                        eprintln!("[Render] Surface 重建后仍失败: {e:?}");
-                        return;
+                        eprintln!("[err][wgpu] Surface 重建后仍失败: {e:?}");
+                        return
                     }
                 }
             }
-            Err(wgpu::SurfaceError::Timeout) => {
+            Err(SurfaceError::Timeout) => {
+                eprintln!("[err][wgpu] 获取帧超时");
                 return;
             }
-            Err(wgpu::SurfaceError::OutOfMemory) => {
-                eprintln!("[Render] GPU 内存不足");
+            Err(SurfaceError::OutOfMemory) => {
+                eprintln!("[err][wgpu] 显存不足");
+                return;
+            }
+            Err(SurfaceError::Other) => {
+                eprintln!("[err][wgpu] 其他错误: 未知错误");
                 return;
             }
         };
@@ -221,8 +225,7 @@ impl State {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        self.renderer
-            .begin_frame(self.size.width, self.size.height);
+        self.renderer.begin_frame(self.size.width, self.size.height);
         self.ui.draw(&mut self.renderer);
         self.renderer.upload(&self.queue);
 
@@ -235,16 +238,18 @@ impl State {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: 0.1,
-                            g: 0.13,
-                            b: 0.17,
+                            g: 0.2,
+                            b: 0.3,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             self.renderer.draw(&mut pass);
@@ -255,25 +260,30 @@ impl State {
     }
 }
 
-struct App {
-    state: Option<State>,
+impl App {
+    pub fn run() -> Result<(), EventLoopError> {
+        env_logger::init();
+        let event_loop: EventLoop<State> = EventLoop::<State>::with_user_event().build()?;
+        let mut app = App::default();
+        event_loop.run_app(&mut app)
+    }
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_none() {
-            let window = event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title("XelGUIDemo")
-                        .with_inner_size(winit::dpi::LogicalSize::new(800, 600)),
-                )
-                .expect("创建窗口失败");
-
-            let state = pollster::block_on(State::new(window));
-            self.state = Some(state);
-            self.state.as_ref().unwrap().window.request_redraw();
+            let window_attributes = Window::default_attributes();
+            let window = Arc::new(
+                event_loop
+                    .create_window(window_attributes.with_title("test-gui"))
+                    .expect("[xel-err] 窗口创建失败"),
+            );
+            self.state = Some(pollster::block_on(State::new(window)));
         }
+    }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: State) {
+        self.state = Some(event);
     }
 
     fn window_event(
