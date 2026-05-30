@@ -1,30 +1,26 @@
-use std::{process::exit, sync::Arc};
+use std::{sync::Arc};
 use wgpu::{ExperimentalFeatures, MemoryHints, SurfaceError};
 use winit::{
-    application::ApplicationHandler,
-    dpi::PhysicalSize,
-    error::EventLoopError,
-    event::{ElementState, MouseButton, WindowEvent},
-    event_loop::{ActiveEventLoop, EventLoop},
-    window::{Window, WindowId},
+    application::ApplicationHandler, dpi::PhysicalSize, error::EventLoopError, event::{ElementState, KeyEvent, MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, ControlFlow, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowId}
 };
 
 use xelgui::render::Renderer2D;
+use xelgui::camera::controller::CameraController;
 
 /// 默认中文字体（思源黑体 CN）。同时覆盖 ASCII / 拉丁字符。
-const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Normal.otf";
+// const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Normal.otf";
 
 struct State {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: PhysicalSize<u32>,
+    is_surface_configured: bool,
     #[allow(dead_code)]
     window: Arc<Window>,
-
+    size: PhysicalSize<u32>,
     renderer: Renderer2D,
-    ui: UiRoot,
+    camera_controller: CameraController,
     mouse_pos: (f32, f32),
 }
 
@@ -36,7 +32,7 @@ pub struct App {
 impl State {
     async fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
-        println!("[winit][window]大小:{}x{}", size.width, size.height);
+        println!("[winit][window] 大小:{}x{}", size.width, size.height);
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::VULKAN,
@@ -74,7 +70,7 @@ impl State {
                 }
             )
             .await
-            .expect("[err][egpu] 创建 Device 失败");
+            .expect("[err][egpu] Device 创建失败");
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -101,72 +97,40 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let renderer = Renderer2D::new(&device, &config, &queue);
+        let camera_controller = CameraController::new(0.2);
+
         // 加载字体
-        let font_data = std::fs::read(DEFAULT_FONT_PATH).unwrap_or_else(|e| {
-            eprintln!(
-                "[字体] 无法从 {} 读取字体: {e}。将使用 A rial 替代。",
-                DEFAULT_FONT_PATH
-            );
-            // 尝试其他常见路径
-            let fallbacks = [
-                "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
-                "/usr/share/fonts/TTF/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            ];
-            for path in fallbacks {
-                if let Ok(data) = std::fs::read(path) {
-                    println!("[字体] 使用: {path}");
-                    return data;
-                }
-            }
-            panic!("找不到任何可用字体文件");
-        });
-
-        let mut renderer =
-            Renderer2D::new(&device, surface_format, size.width, size.height, &font_data);
-
-        let mut ui = UiRoot::new();
-        ui.set_debug(true);
-        // renderer.set_debug(true);
-
-        // VBox 垂直布局：标题 + 按钮 + 说明文字
-        let mut vbox = VBox::new(12.0);
-        vbox.push(Label::new(0.0, 0.0, "Hello, XelGUI!", 32.0).with_color(Color::WHITE));
-        vbox.push(
-            Label::new(0.0, 0.0, "中文标题", 24.0).with_color(Color::new(0.3, 0.8, 0.5, 1.0)),
-        );
-        vbox.push(
-            Label::new(0.0, 0.0, "Press the button below", 18.0)
-                .with_color(Color::new(0.7, 0.7, 0.7, 1.0)),
-        );
-        vbox.push(Button::new(0.0, 0.0, 200.0, 60.0, "按钮", || {
-            println!("[UI] 按钮被点击！");
-            true
-        }));
-        vbox.set_position(300.0, 150.0);
-        ui.add(vbox);
-
-        // 右下角退出按钮（独立于 VBox）
-        ui.add(Button::new(
-            (window.inner_size().width - 200) as f32,
-            (window.inner_size().height - 60) as f32,
-            200.0,
-            60.0,
-            "退出应用",
-            || {
-                exit(0);
-            },
-        ));
+        // let font_data = std::fs::read(DEFAULT_FONT_PATH).unwrap_or_else(|e| {
+        //     eprintln!(
+        //         "[字体] 无法从 {} 读取字体: {e}。将使用 A rial 替代。",
+        //         DEFAULT_FONT_PATH
+        //     );
+        //     // 尝试其他常见路径
+        //     let fallbacks = [
+        //         "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+        //         "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        //         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        //     ];
+        //     for path in fallbacks {
+        //         if let Ok(data) = std::fs::read(path) {
+        //             println!("[字体] 使用: {path}");
+        //             return data;
+        //         }
+        //     }
+        //     panic!("找不到任何可用字体文件");
+        // });
 
         Self {
             surface,
             device,
             queue,
             config,
-            size,
+            is_surface_configured: true,
             window,
+            size,
             renderer,
-            ui,
+            camera_controller,
             mouse_pos: (0.0, 0.0),
         }
     }
@@ -181,10 +145,30 @@ impl State {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            self.is_surface_configured = true;
         }
     }
 
-    fn render(&mut self) {
+    fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
+        match (code, is_pressed) {
+            (KeyCode::Escape, true) => event_loop.exit(),
+            _ => {
+                self.camera_controller.handle_key(code, is_pressed);
+            }
+        }
+    }
+
+    fn update(&mut self) {
+        self.camera_controller.update_camera(&mut self.renderer.camera.camera);
+        self.renderer.camera.camera_uniform.update_view_proj(&self.renderer.camera.camera);
+        self.queue.write_buffer(
+            &self.renderer.camera.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.renderer.camera.camera_uniform]),
+        );
+    }
+
+    pub fn render(&mut self) {
         self.window.pre_present_notify();
 
         let frame = match self.surface.get_current_texture() {
@@ -223,15 +207,15 @@ impl State {
             .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
-        self.renderer.begin_frame(self.size.width, self.size.height);
-        self.ui.draw(&mut self.renderer);
-        self.renderer.upload(&self.queue);
+        // self.renderer.begin_frame(self.size.width, self.size.height);
+        // self.ui.draw(&mut self.renderer);
+        // self.renderer.upload(&self.queue);
 
         {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("xelgui-pass"),
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
@@ -252,11 +236,13 @@ impl State {
                 multiview_mask: None,
             });
 
-            self.renderer.draw(&mut pass);
+            self.renderer.draw(&mut render_pass);
         }
 
         self.queue.submit([encoder.finish()]);
         frame.present();
+
+        self.window.request_redraw();
     }
 }
 
@@ -264,6 +250,7 @@ impl App {
     pub fn run() -> Result<(), EventLoopError> {
         env_logger::init();
         let event_loop: EventLoop<State> = EventLoop::<State>::with_user_event().build()?;
+        event_loop.set_control_flow(ControlFlow::Poll);
         let mut app = App::default();
         event_loop.run_app(&mut app)
     }
@@ -273,11 +260,7 @@ impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_none() {
             let window_attributes = Window::default_attributes();
-            let window = Arc::new(
-                event_loop
-                    .create_window(window_attributes.with_title("test-gui"))
-                    .expect("[xel-err] 窗口创建失败"),
-            );
+            let window = Arc::new(event_loop.create_window(window_attributes.with_title("xel-gui test")).unwrap());
             self.state = Some(pollster::block_on(State::new(window)));
         }
     }
@@ -307,6 +290,7 @@ impl ApplicationHandler<State> for App {
                 state.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
+                state.update();
                 state.render();
             }
 
@@ -314,7 +298,7 @@ impl ApplicationHandler<State> for App {
                 let px = position.x as f32;
                 let py = position.y as f32;
                 state.mouse_pos = (px, py);
-                state.ui.handle_mouse_move(px, py);
+                // state.ui.handle_mouse_move(px, py);
                 state.window.request_redraw();
             }
             WindowEvent::MouseInput {
@@ -323,7 +307,7 @@ impl ApplicationHandler<State> for App {
                 ..
             } => {
                 let (px, py) = state.mouse_pos;
-                state.ui.handle_mouse_down(px, py);
+                // state.ui.handle_mouse_down(px, py);
                 state.window.request_redraw();
             }
             WindowEvent::MouseInput {
@@ -332,9 +316,18 @@ impl ApplicationHandler<State> for App {
                 ..
             } => {
                 let (px, py) = state.mouse_pos;
-                state.ui.handle_mouse_up(px, py);
+                // state.ui.handle_mouse_up(px, py);
                 state.window.request_redraw();
             }
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(code),
+                        state: key_state,
+                        ..
+                    },
+                ..
+            } => state.handle_key(event_loop, code, key_state.is_pressed()),
             _ => {}
         }
     }
