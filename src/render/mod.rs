@@ -1,8 +1,10 @@
 mod vertex;
-use crate::render::vertex::{VERTICES_F, INDICES_F, Vertex};
+use crate::camera::CameraD;
+use crate::render::vertex::{INDICES_F, VERTICES_F, Vertex};
 use crate::texture::TextureD;
 use wgpu::util::DeviceExt;
 
+#[allow(unused)]
 pub struct Renderer2D {
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
@@ -10,11 +12,17 @@ pub struct Renderer2D {
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     texture: TextureD,
+    pub camera: CameraD,
 }
 
 impl Renderer2D {
-    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration,queue:&wgpu::Queue) -> Self {
-        let texture = TextureD::new(&device,&queue);
+    pub fn new(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        queue: &wgpu::Queue,
+    ) -> Self {
+        let texture = TextureD::new(&device, &queue);
+        let camera = CameraD::new(&device, &config);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -24,7 +32,10 @@ impl Renderer2D {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture.texture_bind_group_layout],
+                bind_group_layouts: &[
+                    &texture.texture_bind_group_layout,
+                    &camera.camera_bind_group_layout,
+                ],
                 immediate_size: 0,
             });
 
@@ -91,13 +102,15 @@ impl Renderer2D {
             num_vertices: VERTICES_F.len() as u32,
             index_buffer,
             num_indices: INDICES_F.len() as u32,
-            texture
+            texture,
+            camera,
         }
     }
 
     pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.texture.diffuse_bind_group, &[]);
+        render_pass.set_bind_group(1, &self.camera.camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         // render_pass.draw(0..self.num_vertices, 0..1);

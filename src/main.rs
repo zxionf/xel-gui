@@ -7,6 +7,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 
+use xelgui::camera::controller::CameraController;
 use xelgui::render::Renderer2D;
 
 struct State {
@@ -18,6 +19,7 @@ struct State {
     #[allow(dead_code)]
     window: Arc<Window>,
     renderer: Renderer2D,
+    camera_controller: CameraController,
 }
 
 impl State {
@@ -88,6 +90,8 @@ impl State {
 
         let renderer = Renderer2D::new(&device, &config, &queue);
 
+        let camera_controller = CameraController::new(0.2);
+
         Self {
             surface,
             device,
@@ -96,6 +100,7 @@ impl State {
             is_surface_configured: true,
             window,
             renderer,
+            camera_controller,
         }
     }
 
@@ -108,11 +113,24 @@ impl State {
         }
     }
 
-    fn handle_key(&self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
+    fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
         match (code, is_pressed) {
             (KeyCode::Escape, true) => event_loop.exit(),
-            _ => {}
+            _ => {
+                self.camera_controller.handle_key(code, is_pressed);
+            }
         }
+    }
+
+    fn update(&mut self) {
+        println!("更新");
+        self.camera_controller.update_camera(&mut self.renderer.camera.camera);
+        self.renderer.camera.camera_uniform.update_view_proj(&self.renderer.camera.camera);
+        self.queue.write_buffer(
+            &self.renderer.camera.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.renderer.camera.camera_uniform]),
+        );
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -181,6 +199,7 @@ impl App {
     pub fn run() -> Result<(), EventLoopError> {
         env_logger::init();
         let event_loop = EventLoop::<State>::with_user_event().build()?;
+        event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
         let mut app = App::new();
         event_loop.run_app(&mut app)
     }
@@ -217,6 +236,7 @@ impl ApplicationHandler<State> for App {
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
                 // 根据错误的严重程度处理
+                state.update();
                 match state.render() {
                     Ok(()) => {}
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::OutOfMemory) => {
@@ -226,6 +246,7 @@ impl ApplicationHandler<State> for App {
                     Err(e) => {
                         // Timeout / Outdated 仅跳过当前帧
                         eprintln!("渲染跳过帧: {:?}", e);
+                        self.state.as_mut().unwrap().window.request_redraw();
                     }
                 }
             }
