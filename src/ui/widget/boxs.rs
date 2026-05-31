@@ -30,14 +30,16 @@ impl Widget for Vbox {
         self.bounds
     }
 
-    fn set_position(&mut self, x: i32, y: i32) {
-        self.bounds.x = x;
-        self.bounds.y = y;
+    fn bounds_mut(&mut self) -> &mut Rect {
+        &mut self.bounds
     }
 
     fn draw(&self, renderer: &mut RenderContext) {
         for w in self.widgets.iter() {
             w.draw(renderer);
+            if self.debug {
+                w.draw_debug(renderer);
+            }
         }
     }
 
@@ -52,6 +54,7 @@ impl Widget for Vbox {
         let mut y = self.bounds.y;
         for widget in self.widgets.iter_mut() {
             widget.set_position(self.bounds.x, y);
+            widget.set_size(self.bounds.w, widget.bounds().h);
             y += widget.bounds().h;
         }
     }

@@ -26,9 +26,26 @@ impl Rect {
 #[allow(unused)]
 pub trait Widget {
     fn bounds(&self) -> Rect;
-    fn set_position(&mut self, x: i32, y: i32);
+    fn bounds_mut(&mut self) -> &mut Rect;
     // fn draw<T: Renderer>(&self, renderer: &mut T);
     fn draw(&self, renderer: &mut RenderContext);
+    fn draw_debug(&self, renderer: &mut RenderContext) {
+        let b = self.bounds();
+        renderer.ui.stroke_rect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, 2.0, [0.0, 1.0, 0.0, 1.0]);
+    }
+    fn set_bounds(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        self.set_position(x, y);
+        self.set_size(w, h);
+    }
+    fn set_bounds_rect(&mut self, rect: Rect) { self.set_bounds(rect.x, rect.y, rect.w, rect.h); }
+    fn set_position(&mut self, x: i32, y: i32) {
+        self.bounds_mut().x = x;
+        self.bounds_mut().y = y;
+    }
+    fn set_size(&mut self, w: i32, h: i32) {
+        self.bounds_mut().w = w;
+        self.bounds_mut().h = h;
+    }
     fn set_visible(&mut self, visible: bool) { }
     fn set_debug(&mut self, debuged: bool) { }
     fn hit_test(&self, px: i32, py: i32) -> bool {

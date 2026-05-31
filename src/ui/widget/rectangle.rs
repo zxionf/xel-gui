@@ -40,9 +40,8 @@ impl Widget for Rectangle {
         self.bounds
     }
 
-    fn set_position(&mut self, x: i32, y: i32) {
-        self.bounds.x = x;
-        self.bounds.y = y;
+    fn bounds_mut(&mut self) -> &mut Rect {
+        &mut self.bounds
     }
 
     fn draw(&self, renderer: &mut RenderContext) {

@@ -11,7 +11,7 @@ pub struct Label {
 impl Label {
     pub fn new(text:String) -> Self {
         Self {
-            bounds: Rect::new(0, 0, 0, 0),
+            bounds: Rect::new(0, 0, 0, 60),
             text,
             visible: true,
             debug: false,
@@ -24,12 +24,11 @@ impl Widget for Label {
         self.bounds
     }
 
-    fn set_position(&mut self, x: i32, y: i32) {
-        self.bounds.x = x;
-        self.bounds.y = y;
+    fn bounds_mut(&mut self) -> &mut Rect {
+        &mut self.bounds
     }
 
     fn draw(&self, renderer: &mut RenderContext) {
-        todo!()
+        renderer.text.draw_text(self.bounds.x as f32, self.bounds.y as f32, 16.0, 32.0, &self.text[..], [1.0,0.0,0.0,1.0]);
     }
 }

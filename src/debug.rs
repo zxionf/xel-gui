@@ -10,7 +10,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use xelgui::{camera::controller::CameraController, ui::widget::boxs::Vbox};
+use xelgui::{camera::controller::CameraController, ui::widget::{Widget, boxs::Vbox, label::Label}};
 use xelgui::ui::UIRoot;
 use xelgui::ui::debug::UIDebugFlag;
 use xelgui::ui::widget::rectangle::Rectangle;
@@ -112,7 +112,8 @@ impl State {
 
         let render_context = RenderContext::new(&device, &config, &queue);
 
-        let mut vbox = Box::new(Vbox::new(20, 20, 30, 80));
+        let mut vbox = Box::new(Vbox::new(400, 20, 300, 800));
+        vbox.set_debug(true);
         vbox.add(Box::new(Rectangle::new(
             50,
             50,
@@ -120,7 +121,10 @@ impl State {
             100,
             [0.8, 0.2, 0.2, 0.9],
         )));
+        vbox.add(Box::new(Label::new(String::from("asdasd"))));
         ui.add(vbox);
+
+        ui.add(Box::new(Label::new(String::from("zxionf"))));
 
         // 添加测试矩形
         ui.add(Box::new(Rectangle::new(
@@ -261,16 +265,6 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        // --- UI 准备：收集顶点 ---
-        self.render_context.ui.begin_frame(self.size.width, self.size.height);
-        self.ui.draw(&mut self.render_context);
-        self.render_context.ui.upload(&self.queue);
-
-        self.render_context.text.begin_frame(self.size.width, self.size.height);
-        self.render_context.text.draw_texture(200.0, 200.0, 600.0, 600.0);
-        self.render_context.text.draw_text(100.0, 100.0, 64.0, 128.0, "zxionf", [0.0, 0.0, 0.0, 1.0]);
-        self.render_context.text.upload(&self.queue);
-
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -294,10 +288,19 @@ impl State {
                 multiview_mask: None,
             });
 
+            // 顶点
+            self.render_context.ui.begin_frame(self.size.width, self.size.height);
+            self.render_context.text.begin_frame(self.size.width, self.size.height);
+            self.ui.draw(&mut self.render_context);
+            self.render_context.ui.upload(&self.queue);
+            self.render_context.text.draw_texture(200.0, 200.0, 600.0, 600.0);
+            self.render_context.text.draw_text(100.0, 100.0, 64.0, 128.0, "zxionf", [0.0, 0.0, 0.0, 1.0]);
+            self.render_context.text.upload(&self.queue);
+
             // 3D 场景
             self.render_context.ren.draw(&mut render_pass);
             // UI 层（叠加在 3D 之上）
-            // self.ui.renderer.draw(&mut render_pass);
+            self.render_context.ui.draw(&mut render_pass);
             self.render_context.text.draw(&mut render_pass);
         }
 
