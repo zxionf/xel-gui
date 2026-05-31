@@ -36,7 +36,9 @@ impl Widget for Vbox {
     }
 
     fn draw(&self, renderer: &mut crate::ui::renderer::UIRenderer) {
-        todo!()
+        for w in self.widgets.iter() {
+            w.draw(renderer);
+        }
     }
 
     fn set_visible(&mut self, visible: bool) {
@@ -44,5 +46,13 @@ impl Widget for Vbox {
     }
     fn set_debug(&mut self, debuged: bool) {
         self.debug = debuged;
+    }
+
+    fn layout(&mut self) {
+        let mut y = self.bounds.y;
+        for widget in self.widgets.iter_mut() {
+            widget.set_position(self.bounds.x, y);
+            y += widget.bounds().h;
+        }
     }
 }

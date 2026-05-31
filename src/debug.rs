@@ -10,8 +10,8 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use xelgui::camera::controller::CameraController;
-use xelgui::render::Renderer2D;
+use xelgui::{camera::controller::CameraController, ui::widget::boxs::Vbox};
+use xelgui::render::{Renderer2D, text_render::TextRenderer};
 use xelgui::ui::UIRoot;
 use xelgui::ui::debug::UIDebugFlag;
 use xelgui::ui::widget::rectangle::Rectangle;
@@ -30,6 +30,7 @@ struct State {
     size: PhysicalSize<u32>,
     ui: UIRoot,
     renderer: Renderer2D,
+    text_renderer: TextRenderer,
     camera_controller: CameraController,
     mouse_pos: (i32, i32),
 }
@@ -106,10 +107,21 @@ impl State {
         surface.configure(&device, &config);
 
         let renderer = Renderer2D::new(&device, &config, &queue);
+        let text_renderer = TextRenderer::new(&device, &config, &queue);
         let camera_controller = CameraController::new(0.2);
 
         let mut ui = UIRoot::new(&device, &config);
         ui.set_debug(UIDebugFlag::DEBUG_WIDGETS | UIDebugFlag::DEBUG_EVENTS);
+
+        let mut vbox = Box::new(Vbox::new(20, 20, 30, 80));
+        vbox.add(Box::new(Rectangle::new(
+            50,
+            50,
+            200,
+            100,
+            [0.8, 0.2, 0.2, 0.9],
+        )));
+        ui.add(vbox);
 
         // 添加测试矩形
         ui.add(Box::new(Rectangle::new(
@@ -165,6 +177,7 @@ impl State {
             size,
             ui,
             renderer,
+            text_renderer,
             camera_controller,
             mouse_pos: (0, 0),
         }
@@ -257,6 +270,10 @@ impl State {
         self.ui.draw();
         self.ui.renderer.upload(&self.queue);
 
+        self.text_renderer.begin_frame(self.size.width, self.size.height);
+        self.text_renderer.draw_texture(200.0, 200.0, 600.0, 600.0);
+        self.text_renderer.upload(&self.queue);
+
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -283,7 +300,8 @@ impl State {
             // 3D 场景
             self.renderer.draw(&mut render_pass);
             // UI 层（叠加在 3D 之上）
-            self.ui.renderer.draw(&mut render_pass);
+            // self.ui.renderer.draw(&mut render_pass);
+            self.text_renderer.draw(&mut render_pass);
         }
 
         self.queue.submit([encoder.finish()]);
@@ -370,6 +388,8 @@ impl ApplicationHandler<State> for App {
                 state.ui.handle_mouse_up(px, py);
                 state.window.request_redraw();
             }
+            #[allow(unused)]
+            // TODO MORE
             WindowEvent::MouseWheel {
                 device_id,
                 delta,

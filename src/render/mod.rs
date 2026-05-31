@@ -1,4 +1,6 @@
 mod vertex;
+pub mod text_render;
+mod text_vertex;
 use crate::camera::CameraD;
 use crate::render::vertex::{INDICES_F, VERTICES_F, Vertex};
 use crate::texture::TextureD;

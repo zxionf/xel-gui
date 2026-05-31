@@ -7,6 +7,7 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 
 }pub struct TextureD {
+    pub diffuse_texture: Texture,
     pub diffuse_bind_group: wgpu::BindGroup,
     pub texture_bind_group_layout: wgpu::BindGroupLayout,
 }
@@ -80,13 +81,42 @@ impl Texture {
 
         Ok(Self { texture, view, sampler })
     }
+
+    pub fn set_pixel_sampler(&mut self, device: &wgpu::Device) {
+        self.sampler = device.create_sampler(
+            &wgpu::SamplerDescriptor {
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Nearest,
+                min_filter: wgpu::FilterMode::Nearest,
+                mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+                ..Default::default()
+            }
+        );
+    }
 }
 
 impl TextureD {
-    pub fn new(device:&wgpu::Device, queue:&wgpu::Queue) -> Self {
-        let diffuse_bytes = include_bytes!("../zxionf.png");
-        let diffuse_texture = Texture::from_bytes(&device, &queue, diffuse_bytes, "zxionf.png").unwrap();
 
+    pub fn get_font_texture(device:&wgpu::Device, queue:&wgpu::Queue) -> Self {
+        let bytes = include_bytes!("../res/font_e.png");
+        let mut texture = Texture::from_bytes(device, queue, bytes, "font_e.png").unwrap();
+        texture.set_pixel_sampler(device);
+        Self::from_texture(device, texture)
+    }
+
+    pub fn new(device:&wgpu::Device, queue:&wgpu::Queue) -> Self {
+        let bytes = include_bytes!("../zxionf.png");
+        Self::from_bytes(device, queue, bytes)
+    }
+
+    pub fn from_bytes(device:&wgpu::Device, queue:&wgpu::Queue, bytes: &[u8]) -> Self {
+        let diffuse_texture = Texture::from_bytes(&device, &queue, bytes, "zxionf.png").unwrap();
+        Self::from_texture(device, diffuse_texture)
+    }
+
+    pub fn from_texture(device:&wgpu::Device, diffuse_texture: Texture) -> Self {
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -111,7 +141,12 @@ impl TextureD {
                 ],
                 label: Some("texture_bind_group_layout"),
             });
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            let diffuse_bind_group = TextureD::set_bind_group(&device,&texture_bind_group_layout, &diffuse_texture);
+        Self { diffuse_texture, diffuse_bind_group, texture_bind_group_layout }
+    }
+
+    fn set_bind_group(device:&wgpu::Device, texture_bind_group_layout:&wgpu::BindGroupLayout, diffuse_texture:&Texture) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -124,7 +159,6 @@ impl TextureD {
                 },
             ],
             label: Some("diffuse_bind_group"),
-        });
-        Self { diffuse_bind_group, texture_bind_group_layout }
+        })
     }
 }

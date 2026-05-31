@@ -1,6 +1,7 @@
 pub mod rectangle;
 pub mod boxs;
 pub mod layout;
+pub mod label;
 
 use crate::ui::{renderer::UIRenderer};
 
