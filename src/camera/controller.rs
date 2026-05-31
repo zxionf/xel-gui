@@ -22,7 +22,7 @@ impl CameraController {
     }
 
     pub fn handle_key(&mut self, code: KeyCode, is_pressed: bool) -> bool {
-        println!("key: {:?}, is_pressed: {}", code, is_pressed);
+        // println!("key: {:?}, is_pressed: {}", code, is_pressed);
         match code {
             KeyCode::KeyW | KeyCode::ArrowUp => {
                 self.is_forward_pressed = is_pressed;

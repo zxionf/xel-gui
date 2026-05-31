@@ -6,12 +6,11 @@ pub struct TextVertex {
     pub(crate) color: [f32; 4],
 }
 
-#[warn(dead_code)]
-pub const COLOR_BLUE:   [f32;4] = [0.0, 0.0, 1.0, 1.0];
-pub const COLOR_WHITE:  [f32;4] = [1.0, 1.0, 1.0, 1.0];
-pub const COLOR_BLACK:  [f32;4] = [0.0, 0.0, 0.0, 1.0];
-pub const COLOR_RED:    [f32;4] = [1.0, 0.0, 0.0, 1.0];
-pub const COLOR_GREEN:  [f32;4] = [0.0, 1.0, 0.0, 1.0];
+#[allow(unused)] pub const COLOR_BLUE:   [f32;4] = [0.0, 0.0, 1.0, 1.0];
+#[allow(unused)] pub const COLOR_WHITE:  [f32;4] = [1.0, 1.0, 1.0, 1.0];
+#[allow(unused)] pub const COLOR_BLACK:  [f32;4] = [0.0, 0.0, 0.0, 1.0];
+#[allow(unused)] pub const COLOR_RED:    [f32;4] = [1.0, 0.0, 0.0, 1.0];
+#[allow(unused)] pub const COLOR_GREEN:  [f32;4] = [0.0, 1.0, 0.0, 1.0];
 
 
 impl TextVertex {

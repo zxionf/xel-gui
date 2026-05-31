@@ -1,3 +1,5 @@
+use crate::{render::RenderContext, ui::widget::{Rect, Widget}};
+
 // 垂直布局
 pub struct Vbox {
     widgets: Vec<Box<dyn Widget>>,
@@ -7,8 +9,6 @@ pub struct Vbox {
 }
 // 水平布局
 pub struct Hbox {}
-
-use crate::ui::widget::{Rect, Widget};
 
 impl Vbox {
     pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
@@ -35,7 +35,7 @@ impl Widget for Vbox {
         self.bounds.y = y;
     }
 
-    fn draw(&self, renderer: &mut crate::ui::renderer::UIRenderer) {
+    fn draw(&self, renderer: &mut RenderContext) {
         for w in self.widgets.iter() {
             w.draw(renderer);
         }

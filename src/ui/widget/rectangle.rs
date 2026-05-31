@@ -1,4 +1,4 @@
-use crate::ui::renderer::UIRenderer;
+use crate::render::RenderContext;
 use crate::ui::widget::{Rect, Widget};
 
 /// 纯色矩形 Widget。
@@ -45,9 +45,9 @@ impl Widget for Rectangle {
         self.bounds.y = y;
     }
 
-    fn draw(&self, renderer: &mut UIRenderer) {
+    fn draw(&self, renderer: &mut RenderContext) {
         if self.visible {
-            renderer.fill_rect(
+            renderer.ui.fill_rect(
                 self.bounds.x as f32,
                 self.bounds.y as f32,
                 self.bounds.w as f32,

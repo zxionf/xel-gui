@@ -11,10 +11,10 @@ use winit::{
 };
 
 use xelgui::{camera::controller::CameraController, ui::widget::boxs::Vbox};
-use xelgui::render::{Renderer2D, text_render::TextRenderer};
 use xelgui::ui::UIRoot;
 use xelgui::ui::debug::UIDebugFlag;
 use xelgui::ui::widget::rectangle::Rectangle;
+use xelgui::render::RenderContext;
 
 /// 默认中文字体（思源黑体 CN）。同时覆盖 ASCII / 拉丁字符。
 // const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Normal.otf";
@@ -29,8 +29,7 @@ struct State {
     window: Arc<Window>,
     size: PhysicalSize<u32>,
     ui: UIRoot,
-    renderer: Renderer2D,
-    text_renderer: TextRenderer,
+    render_context: RenderContext,
     camera_controller: CameraController,
     mouse_pos: (i32, i32),
 }
@@ -106,12 +105,12 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let renderer = Renderer2D::new(&device, &config, &queue);
-        let text_renderer = TextRenderer::new(&device, &config, &queue);
         let camera_controller = CameraController::new(0.2);
 
-        let mut ui = UIRoot::new(&device, &config);
+        let mut ui = UIRoot::new();
         ui.set_debug(UIDebugFlag::DEBUG_WIDGETS | UIDebugFlag::DEBUG_EVENTS);
+
+        let render_context = RenderContext::new(&device, &config, &queue);
 
         let mut vbox = Box::new(Vbox::new(20, 20, 30, 80));
         vbox.add(Box::new(Rectangle::new(
@@ -176,8 +175,7 @@ impl State {
             window,
             size,
             ui,
-            renderer,
-            text_renderer,
+            render_context,
             camera_controller,
             mouse_pos: (0, 0),
         }
@@ -208,15 +206,15 @@ impl State {
 
     fn update(&mut self) {
         self.camera_controller
-            .update_camera(&mut self.renderer.camera.camera);
-        self.renderer
+            .update_camera(&mut self.render_context.ren.camera.camera);
+        self.render_context.ren
             .camera
             .camera_uniform
-            .update_view_proj(&self.renderer.camera.camera);
+            .update_view_proj(&self.render_context.ren.camera.camera);
         self.queue.write_buffer(
-            &self.renderer.camera.camera_buffer,
+            &self.render_context.ren.camera.camera_buffer,
             0,
-            bytemuck::cast_slice(&[self.renderer.camera.camera_uniform]),
+            bytemuck::cast_slice(&[self.render_context.ren.camera.camera_uniform]),
         );
     }
 
@@ -264,16 +262,14 @@ impl State {
             });
 
         // --- UI 准备：收集顶点 ---
-        self.ui
-            .renderer
-            .begin_frame(self.size.width, self.size.height);
-        self.ui.draw();
-        self.ui.renderer.upload(&self.queue);
+        self.render_context.ui.begin_frame(self.size.width, self.size.height);
+        self.ui.draw(&mut self.render_context);
+        self.render_context.ui.upload(&self.queue);
 
-        self.text_renderer.begin_frame(self.size.width, self.size.height);
-        self.text_renderer.draw_texture(200.0, 200.0, 600.0, 600.0);
-        self.text_renderer.draw_text(100.0, 100.0, 64.0, 128.0, "zxionf", [0.0, 0.0, 0.0, 1.0]);
-        self.text_renderer.upload(&self.queue);
+        self.render_context.text.begin_frame(self.size.width, self.size.height);
+        self.render_context.text.draw_texture(200.0, 200.0, 600.0, 600.0);
+        self.render_context.text.draw_text(100.0, 100.0, 64.0, 128.0, "zxionf", [0.0, 0.0, 0.0, 1.0]);
+        self.render_context.text.upload(&self.queue);
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -299,10 +295,10 @@ impl State {
             });
 
             // 3D 场景
-            self.renderer.draw(&mut render_pass);
+            self.render_context.ren.draw(&mut render_pass);
             // UI 层（叠加在 3D 之上）
             // self.ui.renderer.draw(&mut render_pass);
-            self.text_renderer.draw(&mut render_pass);
+            self.render_context.text.draw(&mut render_pass);
         }
 
         self.queue.submit([encoder.finish()]);

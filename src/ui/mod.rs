@@ -3,25 +3,24 @@ pub mod renderer;
 pub mod widget;
 
 use debug::UIDebugFlag;
-use renderer::UIRenderer;
 use widget::Widget;
+
+use crate::render::RenderContext;
 
 pub struct UIRoot {
     widgets: Vec<Box<dyn Widget>>,
     hovered: Option<usize>,
     active: Option<usize>,
     debug_flags: UIDebugFlag,
-    pub renderer: UIRenderer,
 }
 
 impl UIRoot {
-    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
+    pub fn new() -> Self {
         Self {
             widgets: vec![],
             hovered: None,
             active: None,
             debug_flags: UIDebugFlag::NONE,
-            renderer: UIRenderer::new(device, config),
         }
     }
 
@@ -35,13 +34,13 @@ impl UIRoot {
 
     /// 遍历所有 widget，向 UI 渲染器提交绘制数据。
     /// 调用前应先 `renderer.begin_frame(w, h)`，调用后应 `renderer.upload(queue)`。
-    pub fn draw(&mut self) {
+    pub fn draw(&mut self, render_context: &mut RenderContext) {
         for w in self.widgets.iter() {
-            w.draw(&mut self.renderer);
+            w.draw(render_context);
 
             if self.debug_flags.contains(UIDebugFlag::DEBUG_WIDGETS) {
                 let b = w.bounds();
-                self.renderer.stroke_rect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, 2.0, [0.0, 1.0, 0.0, 1.0]);
+                render_context.ui.stroke_rect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, 2.0, [0.0, 1.0, 0.0, 1.0]);
             }
         }
     }

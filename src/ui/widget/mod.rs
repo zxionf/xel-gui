@@ -3,7 +3,7 @@ pub mod boxs;
 pub mod layout;
 pub mod label;
 
-use crate::ui::{renderer::UIRenderer};
+use crate::render::RenderContext;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Rect {
@@ -27,7 +27,8 @@ impl Rect {
 pub trait Widget {
     fn bounds(&self) -> Rect;
     fn set_position(&mut self, x: i32, y: i32);
-    fn draw(&self, renderer: &mut UIRenderer);
+    // fn draw<T: Renderer>(&self, renderer: &mut T);
+    fn draw(&self, renderer: &mut RenderContext);
     fn set_visible(&mut self, visible: bool) { }
     fn set_debug(&mut self, debuged: bool) { }
     fn hit_test(&self, px: i32, py: i32) -> bool {

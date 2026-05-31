@@ -1,4 +1,5 @@
 use super::{Rect, Widget};
+use crate::render::RenderContext;
 
 pub struct Label {
     bounds: Rect,
@@ -28,7 +29,7 @@ impl Widget for Label {
         self.bounds.y = y;
     }
 
-    fn draw(&self, renderer: &mut crate::ui::renderer::UIRenderer) {
+    fn draw(&self, renderer: &mut RenderContext) {
         todo!()
     }
 }

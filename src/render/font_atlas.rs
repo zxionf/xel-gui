@@ -65,7 +65,7 @@ impl FontAtlas {
             let u_max = (xy.0 + glyph_width) as f32 / texture_width as f32;
             let v_max = (xy.1 + glyph_height) as f32 / texture_height as f32;
 
-            println!("{} xy:{}x{}", ch, xy.0, xy.1);
+            // println!("{} xy:{}x{}", ch, xy.0, xy.1);
             glyphs.insert(ch, [u_min, v_min, u_max, v_max]);
         }
 
