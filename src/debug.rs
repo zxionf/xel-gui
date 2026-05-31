@@ -272,6 +272,7 @@ impl State {
 
         self.text_renderer.begin_frame(self.size.width, self.size.height);
         self.text_renderer.draw_texture(200.0, 200.0, 600.0, 600.0);
+        self.text_renderer.draw_text(100.0, 100.0, 64.0, 128.0, "zxionf", [0.0, 0.0, 0.0, 1.0]);
         self.text_renderer.upload(&self.queue);
 
         {

@@ -1,5 +1,6 @@
 use std::mem;
-use crate::render::text_vertex::{TextVertex, COLOR_GREEN};
+use crate::render::font_atlas::FontAtlas;
+use crate::render::text_vertex::{TextVertex, COLOR_GREEN, COLOR_RED};
 use crate::texture::Texture;
 use wgpu::util::DeviceExt;
 
@@ -16,6 +17,7 @@ pub struct TextRenderer {
     proj_bind_group_layout: wgpu::BindGroupLayout,
     proj_bind_group: wgpu::BindGroup,
     texture: Texture,
+    font_atlas: FontAtlas,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_group: wgpu::BindGroup,
     width: u32,
@@ -32,8 +34,13 @@ impl TextRenderer {
         queue: &wgpu::Queue,
     ) -> Self {
         let texture_bytes = include_bytes!("../res/font_e.png");
-        let mut texture = Texture::from_bytes(device, queue, texture_bytes, "font_e.png").unwrap();
+        let atlas_str = include_str!("../res/font_e.atlas");
+        let img = image::load_from_memory(texture_bytes).unwrap();
+        let mut texture = Texture::from_image(device, queue, &img, Some("font_e.png")).unwrap();
         texture.set_pixel_sampler(device);
+
+        let font_atlas = FontAtlas::new(&img, 7, 16, atlas_str);
+        
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -179,6 +186,7 @@ impl TextRenderer {
             indices: Vec::with_capacity(MAX_TEXT_INDICES as usize),
             num_indices: 0,
             texture,
+            font_atlas,
             texture_bind_group_layout,
             texture_bind_group,
             projection,
@@ -219,10 +227,54 @@ impl TextRenderer {
 
     pub fn draw_texture(&mut self, x:f32,y:f32, w:f32, h:f32) {
         let base = self.vertices.len() as u16;
+        // l t
         self.vertices.push(TextVertex { position: [x, y], tex_coords: [0.0, 0.0], color:COLOR_GREEN, });
+        // l b
         self.vertices.push(TextVertex { position: [x, y + h], tex_coords: [0.0, 1.0], color:COLOR_GREEN, });
-        self.vertices.push(TextVertex { position: [x + w, y + h], tex_coords: [1.0, 1.0], color:COLOR_GREEN, });
-        self.vertices.push(TextVertex { position: [x + w, y], tex_coords: [1.0, 0.0], color:COLOR_GREEN, });
+        // r b
+        self.vertices.push(TextVertex { position: [x + w, y + h], tex_coords: [1.0, 1.0], color:COLOR_RED, });
+        // r t
+        self.vertices.push(TextVertex { position: [x + w, y], tex_coords: [1.0, 0.0], color:COLOR_RED, });
+
+        self.indices.push(base);
+        self.indices.push(base + 1);
+        self.indices.push(base + 3);
+        self.indices.push(base + 3);
+        self.indices.push(base + 1);
+        self.indices.push(base + 2);
+
+        self.num_indices += 6;
+    }
+
+    pub fn draw_text(&mut self, x:f32,y:f32, w:f32, h:f32, text:&str, color:[f32;4]) { 
+        for (i, c) in text.chars().enumerate() {
+            let x = x + i as f32 * w;
+            self.draw_char(x,y,w,h,c,color);
+        }
+    }
+
+    pub fn draw_char(&mut self, x:f32,y:f32, w:f32, h:f32, c:char, color:[f32;4]) { 
+        let base = self.vertices.len() as u16;
+        if let Some(uv) = self.font_atlas.uv_rect(c) {
+            let [tx, ty, bx, by] = uv;
+            // l t
+            self.vertices.push(TextVertex { position: [x, y], tex_coords:[tx,ty] , color, });
+            // l b
+            self.vertices.push(TextVertex { position: [x, y + h], tex_coords: [tx,by], color, });
+            // r b
+            self.vertices.push(TextVertex { position: [x + w, y + h], tex_coords: [bx,by], color, });
+            // r t
+            self.vertices.push(TextVertex { position: [x + w, y], tex_coords: [bx,ty], color, });
+        }else {
+            // l t
+            self.vertices.push(TextVertex { position: [x, y], tex_coords: [0.0, 0.0], color:COLOR_GREEN, });
+            // l b
+            self.vertices.push(TextVertex { position: [x, y + h], tex_coords: [0.0, 1.0], color:COLOR_GREEN, });
+            // r b
+            self.vertices.push(TextVertex { position: [x + w, y + h], tex_coords: [1.0, 1.0], color:COLOR_RED, });
+            // r t
+            self.vertices.push(TextVertex { position: [x + w, y], tex_coords: [1.0, 0.0], color:COLOR_RED, });
+        }
 
         self.indices.push(base);
         self.indices.push(base + 1);
